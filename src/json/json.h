@@ -32,7 +32,7 @@ struct json_object *json_object_del(struct json_object *obj, char *key);
 int json_object_add(struct json_object *obj, char *key, struct json_object *val);
 
 char *json_to_string(struct json_object *obj);
-enum json_type json_get_type(struct json_object *);
+enum json_type json_get_type(struct json_object *obj);
 void json_free(struct json_object *obj);
 
 #endif /* JSON_H_ */

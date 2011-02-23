@@ -5,8 +5,8 @@
  *      Author: ant
  */
 
-#include "json/json.h"
-#include "util/list.h"
+#include "json.h"
+#include "../util/list.h"
 
 #include <stdlib.h>
 
@@ -84,7 +84,7 @@ struct json_object *json_object_del(struct json_object *obj, char *key)
 
 int json_object_add(struct json_object *obj, char *key, struct json_object *val)
 {
-	return NULL;
+	return 0;
 }
 
 char *json_to_string(struct json_object *obj)
@@ -92,7 +92,7 @@ char *json_to_string(struct json_object *obj)
 	return NULL;
 }
 
-enum json_type json_get_type(struct json_object *)
+enum json_type json_get_type(struct json_object *obj)
 {
 	return json_type_null;
 }
