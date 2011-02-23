@@ -11,15 +11,21 @@
 struct json_object;
 
 typedef char boolean;
+#define FALSE (char)0
+#define TRUE (char)1
 
 enum json_type {json_type_null, json_type_int, json_type_double, json_type_boolean, json_type_string,
 				json_type_object, json_type_array};
 
 struct json_object *json_new_int(int i);
 struct json_object *json_new_double(double d);
-struct json_object *json_new_bool(boolean b);
+struct json_object *json_new_boolean(boolean b);
 struct json_object *json_new_string(char *s);
-struct json_object *json_new_null();
+
+int json_get_int(struct json_object *obj);
+double json_get_double(struct json_object *obj);
+boolean json_get_boolean(struct json_object *obj);
+char *json_get_string(struct json_object *obj);
 
 struct json_object *json_array_new();
 int json_array_length(struct json_object *obj);

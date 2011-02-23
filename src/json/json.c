@@ -20,7 +20,6 @@ struct json_object {
 };
 
 
-
 struct json_object *json_new_int(int i)
 {
 	return NULL;
@@ -31,7 +30,7 @@ struct json_object *json_new_double(double d)
 	return NULL;
 }
 
-struct json_object *json_new_bool(boolean b)
+struct json_object *json_new_boolean(boolean b)
 {
 	return NULL;
 }
@@ -41,11 +40,25 @@ struct json_object *json_new_string(char *s)
 	return NULL;
 }
 
-struct json_object *json_new_null()
+int json_get_int(struct json_object *obj)
+{
+	return 0;
+}
+
+double json_get_double(struct json_object *obj)
+{
+	return 0;
+}
+
+boolean json_get_boolean(struct json_object *obj)
+{
+	return FALSE;
+}
+
+char *json_get_string(struct json_object *obj)
 {
 	return NULL;
 }
-
 
 struct json_object *json_array_new()
 {
