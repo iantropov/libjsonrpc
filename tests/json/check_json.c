@@ -1,37 +1,33 @@
+#include "check_json_array.h"
+#include "check_json_new.h"
+#include "check_json_misc.h"
+#include "check_json_object.h"
+
 #include <stdlib.h>
-#include <check.h>
-#include "../../src/json/json.h"
 
-
-START_TEST (test_new_int)
+Suite *json_suite (void)
 {
-    struct json_object *json_int = json_new_int(5);
-    fail_unless(json_get_type(json_int) == json_type_int,
-		"json_object has bad type!");
-    fail_unless(json_get_int(json_int) == 5,
-		"json_object has bad value!");
-}
-END_TEST
+	Suite *s = suite_create ("json");
 
-Suite *
-json_suite (void)
-{
-  Suite *s = suite_create ("json");
+	/* Json object creation test case */
+	suite_add_tcase (s, json_new_tcase());
+	
+	/*Json array test case */
+	suite_add_tcase(s, json_array_tcase());
+	
+	/*Json misc functions (ref_get, ref_put, to_string) */
+	suite_add_tcase(s, json_misc_tcase());
+	
+	/*Json object test case */
+	suite_add_tcase(s, json_object_tcase());
 
-  /* Core test case */
-  TCase *tc_core = tcase_create ("json_new");
-  tcase_add_test (tc_core, test_new_int);
-  suite_add_tcase (s, tc_core);
-
-  return s;
+	return s;
 }
 
-int
-main (void)
+int main (void)
 {
   int number_failed;
-  Suite *s = json_suite ();
-  SRunner *sr = srunner_create (s);
+  SRunner *sr = srunner_create(json_suite());
   srunner_run_all (sr, CK_NORMAL);
   number_failed = srunner_ntests_failed (sr);
   srunner_free (sr);
