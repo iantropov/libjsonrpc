@@ -28,7 +28,7 @@ static void fail_unless(boolean b, char *s)
 		printf("%s\n", s);
 }
 
-static int list_example()
+static int list_example(size_t jk)
 {
 	struct my_list entry, *new_entry;
 	struct list_head *counter;

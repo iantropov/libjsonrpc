@@ -1,6 +1,7 @@
 #include <check.h>
 
 #include "json/check_json.h"
+#include "json_parser/check_json_parser.h"
 
 #include <stdlib.h>
 
@@ -8,6 +9,7 @@ int main (void)
 {
   int number_failed;
   SRunner *sr = srunner_create(make_json_suite());
+  srunner_add_suite(sr, make_json_parser_suite());
   srunner_run_all (sr, CK_NORMAL);
   number_failed = srunner_ntests_failed (sr);
   srunner_free (sr);
