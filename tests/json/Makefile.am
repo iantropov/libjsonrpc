@@ -1,8 +1,8 @@
 ## Process this file with automake to produce Makefile.in
 
-TESTS = check_json
-check_PROGRAMS = check_json
-check_json_SOURCES = 	check_json.c \
+lib_LTLIBRARIES = libcheckjson.la
+libcheckjson_la_SOURCES = check_json.h \
+			check_json.c \
 			common.h \
 			check_json_new.h \
 			check_json_new.c \
@@ -13,5 +13,5 @@ check_json_SOURCES = 	check_json.c \
 			check_json_object.h \
 			check_json_object.c \
 			$(top_builddir)/src/json/json.h
-check_json_CFLAGS = @CHECK_CFLAGS@
-check_json_LDADD = $(top_builddir)/src/json/libjson.la @CHECK_LIBS@
+libcheckjson_la_LDFLAGS = `-rpath`
+libcheckjson_la_LIBADD = $(top_builddir)/src/json/libjson.la @CHECK_LIBS@

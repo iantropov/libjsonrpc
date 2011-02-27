@@ -1,11 +1,13 @@
+#include "check_json.h"
 #include "check_json_array.h"
-#include "check_json_new.h"
 #include "check_json_misc.h"
 #include "check_json_object.h"
+#include "check_json_new.h"
 
+#include "check.h"
 #include <stdlib.h>
 
-Suite *json_suite (void)
+Suite *make_json_suite (void)
 {
 	Suite *s = suite_create ("json");
 
@@ -22,14 +24,4 @@ Suite *json_suite (void)
 	suite_add_tcase(s, json_object_tcase());
 
 	return s;
-}
-
-int main (void)
-{
-  int number_failed;
-  SRunner *sr = srunner_create(json_suite());
-  srunner_run_all (sr, CK_NORMAL);
-  number_failed = srunner_ntests_failed (sr);
-  srunner_free (sr);
-  return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
