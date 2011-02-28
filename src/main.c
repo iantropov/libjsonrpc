@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "json/json.h"
+//#include "json_parser/json_parser.h"
 
 struct my_list {
 	int value;
@@ -36,7 +37,7 @@ static int list_example(size_t jk)
 
 	int i;
 
-	for (i = 0; i < 5; i++) {
+	for (i = 0; i < 1; i++) {
 		new_entry = (struct my_list *)malloc(sizeof(struct my_list));
 		if (new_entry == NULL)
 			return EXIT_FAILURE;
@@ -44,6 +45,12 @@ static int list_example(size_t jk)
 		new_entry->value = i;
 		list_add_tail(&(new_entry->list), &(entry.list));
 	}
+
+	struct list_head *next = entry.list.next, *prev = entry.list.prev;
+
+	struct my_list *e1 = list_entry(next, struct my_list, list);
+	struct my_list *e2 = list_entry(prev, struct my_list, list);
+
 
 	list_for_each(counter, &entry.list) {
 		new_entry = list_entry(counter, struct my_list, list);
@@ -54,36 +61,24 @@ static int list_example(size_t jk)
 	return EXIT_SUCCESS;
 }
 
+static void check_as_invalid(char *s)
+{
+	struct json_object *j_int = json_parser_parse(s);
+	fail_unless(j_int == NULL, "bad result");
+}
+
 int main()
 {
-	struct json_object *obj_0 = json_object_new();
-	struct json_object *ar_0 = json_array_new();
-	struct json_object *obj_1 = json_object_new();
-
-	struct json_object *j_int = json_int_new(CHECK_INT);
-	struct json_object *j_str = json_string_new(CHECK_STR);
-	struct json_object *j_bool = json_boolean_new(TRUE);
-
-	json_object_add(obj_1, "ar_0", ar_0);
-	json_object_add(obj_0, "obj_1", obj_1);
-	json_object_add(obj_0, "j_bool", j_bool);
-	json_object_add(obj_1, "j_int", j_int);
-	json_array_add(ar_0, json_ref_get(j_str));
-
-	fail_unless(json_array_length(ar_0) == 1, "bad length");
-
-	fail_unless(strcmp(json_string_get(json_array_get(json_object_get(json_object_get(obj_0,
-				"obj_1"), "ar_0"), 0)), CHECK_STR) == 0, "bad str in obj");
-
-	fail_unless(json_int_get(json_object_get(json_object_get(obj_0,
-					"obj_1"), "j_int")) == CHECK_INT, "bad int in obj");
-
-	fail_unless(json_boolean_get(json_object_get(obj_0, "j_bool")) == TRUE, "bad bool in obj");
-
-	json_ref_put(obj_0);
-
-	json_ref_put(j_str);
-
-	return EXIT_SUCCESS;
+	check_as_invalid("2-");
+	check_as_invalid("2,");
+	check_as_invalid("[2,");
+	check_as_invalid(",");
+	check_as_invalid("23 23");
+	check_as_invalid("23,2");
+	check_as_invalid("{2,2");
+	check_as_invalid("{2,2}");
+	check_as_invalid("{\"cd\":,}");
+	check_as_invalid("");
+	return 0;
 }
 

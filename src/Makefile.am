@@ -2,6 +2,8 @@
 
 bin_PROGRAMS = main
 main_SOURCES = main.c
-main_LDADD = json/libjson.la json_parser/libjsonparser.la
+main_LDADD = 	json/libjson.la \
+		json_parser/libjsonparser.la \
+		util/libutil.la
 
-SUBDIRS=json json_parser .
+SUBDIRS=json util json_parser .

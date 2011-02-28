@@ -24,7 +24,6 @@ typedef void (del_func)(struct json_object *obj);
 
 struct json_object {
 	enum json_type type;
-	char *key;
 	int ref_count;
 	struct json_data data;
 	del_func *delete;
@@ -136,9 +135,25 @@ struct json_object *json_string_new(char *s)
 	if (str_copy == NULL)
 		return NULL;
 	strcpy(str_copy, s);
-	str_copy[strlen(s)] = '\0';
 
 	JSON_OBJECT_CREATE(json_type_string, c_string, delete_string, str_copy);
+}
+
+struct json_object *json_string_new_len(char *s, size_t len)
+{
+	char *str_copy = (char *)malloc(len + 1);
+	if (str_copy == NULL)
+		return NULL;
+	strncpy(str_copy, s, len);
+	str_copy[len] = '\0';
+
+	JSON_OBJECT_CREATE(json_type_string, c_string, delete_string, str_copy);
+
+}
+
+struct json_object *json_null_new()
+{
+	return json_object_create(json_type_null, delete_primitive);
 }
 
 int json_int_get(struct json_object *obj)
@@ -303,6 +318,9 @@ enum json_type json_get_type(struct json_object *obj)
 
 void json_ref_put(struct json_object *obj)
 {
+	if (obj == NULL)
+		return;
+
 	obj->ref_count--;
 	if (obj->ref_count == 0)
 		obj->delete(obj);
@@ -310,6 +328,9 @@ void json_ref_put(struct json_object *obj)
 
 struct json_object *json_ref_get(struct json_object *obj)
 {
+	if (obj == NULL)
+		return NULL;
+
 	obj->ref_count++;
 	return obj;
 }

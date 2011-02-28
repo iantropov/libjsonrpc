@@ -50,16 +50,25 @@ END_TEST
 
 START_TEST (test_new_string)
 {
-	char *s = (char *)malloc(strlen("Hello") + 1);
-	if (s == NULL)
-		return;
-	strcpy(s, "Hello");
-
+	char *s = "Hello";
     struct json_object *json_obj = json_string_new(s);
     s[0] = 'P';
     fail_unless(json_get_type(json_obj) == json_type_string,
 		"json_object has bad type!");
     fail_unless(strcmp(json_string_get(json_obj), "Hello") == 0,
+		"json_object has bad value!");
+
+    json_ref_put(json_obj);
+}
+END_TEST
+
+START_TEST (test_new_string_len)
+{
+	char *s = "Hello";
+    struct json_object *json_obj = json_string_new_len(s, 2);
+    fail_unless(json_get_type(json_obj) == json_type_string,
+		"json_object has bad type!");
+    fail_unless(strcmp(json_string_get(json_obj), "He") == 0,
 		"json_object has bad value!");
 
     json_ref_put(json_obj);
@@ -74,6 +83,7 @@ TCase *json_new_tcase(void)
 	tcase_add_test (tc_json_new, test_new_double);
 	tcase_add_test (tc_json_new, test_new_boolean);
 	tcase_add_test (tc_json_new, test_new_string);
+	tcase_add_test (tc_json_new, test_new_string_len);
 
 	return tc_json_new;
 }

@@ -10,6 +10,8 @@
 
 struct json_object;
 
+#include <stdlib.h>
+
 typedef char boolean;
 #define FALSE (char)0
 #define TRUE (char)1
@@ -21,6 +23,8 @@ struct json_object *json_int_new(int i);
 struct json_object *json_double_new(double d);
 struct json_object *json_boolean_new(boolean b);
 struct json_object *json_string_new(char *s);
+struct json_object *json_string_new_len(char *s, size_t len);
+struct json_object *json_null_new();
 
 int json_int_get(struct json_object *obj);
 double json_double_get(struct json_object *obj);

@@ -7,6 +7,7 @@ check_lib_SOURCES = 	check_lib.c
 check_lib_CFLAGS = @CHECK_CFLAGS@
 check_lib_LDADD = 	$(top_builddir)/src/json/libjson.la  \
 			$(top_builddir)/src/json_parser/libjsonparser.la \
+			$(top_builddir)/src/util/libutil.la  \
 			$(top_builddir)/tests/json/libcheckjson.la \
 			$(top_builddir)/tests/json_parser/libcheckjsonparser.la \
 			 @CHECK_LIBS@
