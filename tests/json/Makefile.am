@@ -13,5 +13,4 @@ libcheckjson_la_SOURCES = check_json.h \
 			check_json_object.h \
 			check_json_object.c \
 			$(top_builddir)/src/json/json.h
-libcheckjson_la_LDFLAGS = `-rpath`
 libcheckjson_la_LIBADD = $(top_builddir)/src/json/libjson.la @CHECK_LIBS@

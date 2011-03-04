@@ -13,4 +13,3 @@ check_lib_LDADD = 	$(top_builddir)/src/json/libjson.la  \
 			$(top_builddir)/tests/json_parser/libcheckjsonparser.la \
 			$(top_builddir)/tests/json_rpc/libcheckjsonrpc.la \
 			 @CHECK_LIBS@
-#check_lib_CPPFlAGS = "-I/usr/local/include -L/usr/local/lib -levent"
