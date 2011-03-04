@@ -26,7 +26,7 @@ AC_CHECK_HEADERS([stdlib.h event.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 
-#AC_CHECK_LIB(event, event_init)
+AC_CHECK_LIB(event, event_init)
 
 # Checks for library functions.
 AC_FUNC_MALLOC
