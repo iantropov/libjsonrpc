@@ -22,9 +22,11 @@ AM_PATH_CHECK()
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([stdlib.h])
+AC_CHECK_HEADERS([stdlib.h event.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
+
+#AC_CHECK_LIB(event, event_init)
 
 # Checks for library functions.
 AC_FUNC_MALLOC
@@ -36,9 +38,11 @@ AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/json/Makefile
                  src/json_parser/Makefile
+                 src/json_rpc/Makefile
                  src/util/Makefile
                  tests/Makefile
                  tests/json/Makefile
-                 tests/json_parser/Makefile])
+                 tests/json_parser/Makefile
+                 tests/json_rpc/Makefile])
 
 AC_OUTPUT
