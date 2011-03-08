@@ -9,7 +9,7 @@ START_TEST(test_array_create_empty)
 {
 	struct json_object *ar = json_array_new();
 
-	fail_unless(json_get_type(ar) == json_type_array, "Json object has bad type!");
+	fail_unless(json_type(ar) == json_type_array, "Json object has bad type!");
 
 	fail_unless(json_array_length(ar) == 0, "Json array has invalid length");
 
@@ -34,7 +34,7 @@ START_TEST(test_array_create)
 
 	fail_unless(j_int != NULL, "Json_array_get return NULL");
 
-	fail_unless(json_get_type(j_int) == json_type_int, "Json_int has bad type");
+	fail_unless(json_type(j_int) == json_type_int, "Json_int has bad type");
 
 	fail_unless(json_int_get(j_int) == CHECK_INT, "Json_int has bad value");
 

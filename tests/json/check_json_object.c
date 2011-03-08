@@ -9,7 +9,7 @@ START_TEST(test_object_new)
 {
 	struct json_object *obj = json_object_new();
 
-	fail_unless(json_get_type(obj) == json_type_object, "Json object has bad type!");
+	fail_unless(json_type(obj) == json_type_object, "Json object has bad type!");
 
 	json_ref_put(obj);
 }

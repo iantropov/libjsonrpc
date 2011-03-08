@@ -17,7 +17,7 @@ typedef void (json_rpc_method)(struct json_rpc *jr, struct json_object *obj, voi
 struct json_rpc *json_rpc_init(json_rpc_method *result_method, void *arg);
 void json_rpc_destroy(struct json_rpc *jr);
 
-int json_rpc_add_method(struct json_rpc *jr, char *name, json_rpc_method *meth, void *arg);
+int json_rpc_add_method(struct json_rpc *jr, char *name, json_rpc_method *method, void *arg);
 void json_rpc_del_method(struct json_rpc *jr, char *name);
 
 void json_rpc_return(struct json_rpc *jr, struct json_object *res);

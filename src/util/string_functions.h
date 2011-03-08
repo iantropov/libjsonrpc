@@ -10,4 +10,6 @@
 
 char *interpretate_esc_seq(char *str, int len);
 
+char *string_copy(char *source);
+
 #endif /* STRING_FUNCTIONS_H_ */

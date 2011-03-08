@@ -42,9 +42,11 @@ void json_object_del(struct json_object *obj, char *key);
 int json_object_add(struct json_object *obj, char *key, struct json_object *val);
 
 char *json_to_string(struct json_object *obj);
-enum json_type json_get_type(struct json_object *obj);
+enum json_type json_type(struct json_object *obj);
 
 void json_ref_put(struct json_object *obj);
 struct json_object *json_ref_get(struct json_object *obj);
+
+int json_equals(struct json_object *obj_1, struct json_object *obj_2);
 
 #endif /* JSON_H_ */

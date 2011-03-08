@@ -13,7 +13,7 @@ static int is_doubles_equils(double a, double b)
 START_TEST (test_new_int)
 {
     struct json_object *json_int = json_int_new(5);
-    fail_unless(json_get_type(json_int) == json_type_int,
+    fail_unless(json_type(json_int) == json_type_int,
 		"json_object has bad type!");
     fail_unless(json_int_get(json_int) == 5,
 		"json_object has bad value!");
@@ -26,7 +26,7 @@ START_TEST (test_new_double)
 {
     double val = 3.14;
     struct json_object *json_obj = json_double_new(val);
-    fail_unless(json_get_type(json_obj) == json_type_double,
+    fail_unless(json_type(json_obj) == json_type_double,
 		"json_object has bad type!");
 		
     fail_unless(is_doubles_equils(json_double_get(json_obj), val) == 1,
@@ -39,7 +39,7 @@ END_TEST
 START_TEST (test_new_boolean)
 {
     struct json_object *json_obj = json_boolean_new(TRUE);
-    fail_unless(json_get_type(json_obj) == json_type_boolean,
+    fail_unless(json_type(json_obj) == json_type_boolean,
 		"json_object has bad type!");
     fail_unless(json_boolean_get(json_obj) == TRUE,
 		"json_object has bad value!");
@@ -53,7 +53,7 @@ START_TEST (test_new_string)
 	char *s = "Hello";
     struct json_object *json_obj = json_string_new(s);
     s[0] = 'P';
-    fail_unless(json_get_type(json_obj) == json_type_string,
+    fail_unless(json_type(json_obj) == json_type_string,
 		"json_object has bad type!");
     fail_unless(strcmp(json_string_get(json_obj), "Hello") == 0,
 		"json_object has bad value!");
@@ -66,7 +66,7 @@ START_TEST (test_new_string_len)
 {
 	char *s = "Hello";
     struct json_object *json_obj = json_string_new_len(s, 2);
-    fail_unless(json_get_type(json_obj) == json_type_string,
+    fail_unless(json_type(json_obj) == json_type_string,
 		"json_object has bad type!");
     fail_unless(strcmp(json_string_get(json_obj), "He") == 0,
 		"json_object has bad value!");

@@ -5,7 +5,7 @@ START_TEST (test_valid)
 	char *s = "2";
     struct json_object *j_int = json_parser_parse(s);
 
-    fail_unless(json_get_type(j_int) == json_type_int, "bad type");
+    fail_unless(json_type(j_int) == json_type_int, "bad type");
     fail_unless(json_int_get(j_int) == 2, "bad value");
 }
 END_TEST
@@ -15,13 +15,13 @@ START_TEST (test_valid_2)
 	char *s = "[2  ,  3]";
     struct json_object *obj = json_parser_parse(s);
 
-    fail_unless(json_get_type(obj) == json_type_array, "bad type");
+    fail_unless(json_type(obj) == json_type_array, "bad type");
     fail_unless(json_array_length(obj) == 2, "bad length");
 
     struct json_object *j_int0 = json_array_get(obj, 0);
     struct json_object *j_int1 = json_array_get(obj, 1);
-    fail_unless(json_get_type(j_int0) == json_type_int, "bad type");
-    fail_unless(json_get_type(j_int1) == json_type_int, "bad type");
+    fail_unless(json_type(j_int0) == json_type_int, "bad type");
+    fail_unless(json_type(j_int1) == json_type_int, "bad type");
 
     fail_unless(json_int_get(j_int0) == 2, "bad value");
     fail_unless(json_int_get(j_int1) == 3, "bad value");
@@ -33,16 +33,16 @@ START_TEST (test_valid_3)
 	char *s = "[{\"key1\":2  ,  \"key2\":\"val\"}, 45, null]";
     struct json_object *j_ar = json_parser_parse(s);
 
-    fail_unless(json_get_type(j_ar) == json_type_array, "bad type");
+    fail_unless(json_type(j_ar) == json_type_array, "bad type");
     fail_unless(json_array_length(j_ar) == 3, "bad length");
 
     struct json_object *j_obj = json_array_get(j_ar, 0);
     struct json_object *j_int1 = json_array_get(j_ar, 1);
     struct json_object *j_null = json_array_get(j_ar, 2);
 
-    fail_unless(json_get_type(j_obj) == json_type_object, "bad type");
-    fail_unless(json_get_type(j_int1) == json_type_int, "bad type");
-    fail_unless(json_get_type(j_null) == json_type_null, "bad type");
+    fail_unless(json_type(j_obj) == json_type_object, "bad type");
+    fail_unless(json_type(j_int1) == json_type_int, "bad type");
+    fail_unless(json_type(j_null) == json_type_null, "bad type");
 
     struct json_object *j_int2 = json_object_get(j_obj, "key1");
     struct json_object *j_str = json_object_get(j_obj, "key2");

@@ -149,3 +149,13 @@ char *interpretate_esc_seq(char *str, int len)
 	dest[len] = '\0';
 	return dest;
 }
+
+char *string_copy(char *source)
+{
+	int len = strlen(source);
+	char *dest = (char *)malloc(len + 1);
+	if (dest == NULL)
+		return NULL;
+
+	return strcpy(dest, source);
+}
