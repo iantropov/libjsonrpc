@@ -152,6 +152,9 @@ char *interpretate_esc_seq(char *str, int len)
 
 char *string_copy(char *source)
 {
+	if (source == NULL)
+		return NULL;
+
 	int len = strlen(source);
 	char *dest = (char *)malloc(len + 1);
 	if (dest == NULL)

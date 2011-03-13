@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 
 struct json_data {
 	int c_int;
@@ -24,14 +25,18 @@ struct json_data {
 
 typedef void (del_func)(struct json_object *obj);
 typedef int (eq_func)(struct json_object *obj1, struct json_object *obj2);
-
+typedef int (len_func)(struct json_object *obj);
+typedef void (print_func)(struct json_object *obj1, char *buf);
 
 struct json_object {
 	enum json_type type;
 	int ref_count;
 	struct json_data data;
+
 	del_func *delete;
 	eq_func *equals;
+	len_func *s_length;
+	print_func *print;
 };
 
 struct array_list_entry {
@@ -53,12 +58,21 @@ struct object_list_entry {
 #define DEFAULT_ARRAY_LENGTH 0
 #define DOUBLE_EPSILON 0.0000001
 
-#define JSON_OBJECT_CREATE(type, member, df, ef, value) struct json_object *res = json_object_create(type, df, ef);\
-	if (res == NULL) return NULL; res->data.member = value; return res;
+#define TRUE_STRING "true"
+#define FALSE_STRING "false"
+#define NULL_STRING "null"
+
+#define MAX_NUMBER_LENGTH 50
+
+#define JSON_OBJECT_CREATE(ttt,value,df) struct json_object *res = \
+	json_object_create(json_type_##ttt,df,ttt##_equals,ttt##_string_length,ttt##_print);\
+	if (res == NULL) return NULL; res->data.c_##ttt = value; return res;
 
 #define JSON_OBJECT_GET(object, objtype, member, default_value) if(object==NULL||object->type!=objtype)return default_value;\
 	return object->data.member;
 
+
+/*		Equals functions 	*/
 static int int_equals(struct json_object *obj_1, struct json_object *obj_2);
 static int string_equals(struct json_object *obj_1, struct json_object *obj_2);
 static int double_equals(struct json_object *obj_1, struct json_object *obj_2);
@@ -67,8 +81,32 @@ static int array_equals(struct json_object *obj_1, struct json_object *obj_2);
 static int object_equals(struct json_object *obj_1, struct json_object *obj_2);
 static int null_equals(struct json_object *obj_1, struct json_object *obj_2);
 
+/*		Delete functions 	*/
+static void delete_primitive(struct json_object *obj);
+static void delete_string(struct json_object *obj);
+static void delete_array(struct json_object *obj);
+static void delete_object(struct json_object *obj);
 
-static struct json_object *json_object_create(enum json_type type, del_func *delete, eq_func *equals)
+/*		String length functions 	*/
+static int object_string_length(struct json_object *obj);
+static int array_string_length(struct json_object *obj);
+static int string_string_length(struct json_object *obj);
+static int int_string_length(struct json_object *obj);
+static int double_string_length(struct json_object *obj);
+static int boolean_string_length(struct json_object *obj);
+static int null_string_length(struct json_object *obj);
+
+/*		Print functions 	*/
+static void object_print(struct json_object *obj, char *buf);
+static void array_print(struct json_object *obj, char *buf);
+static void int_print(struct json_object *obj, char *buf);
+static void double_print(struct json_object *obj, char *buf);
+static void boolean_print(struct json_object *obj, char *buf);
+static void string_print(struct json_object *obj, char *buf);
+static void null_print(struct json_object *obj, char *buf);
+
+
+static struct json_object *json_object_create(enum json_type type, del_func *delete, eq_func *equals, len_func *s_length, print_func *print)
 {
 	struct json_object *res = (struct json_object *)malloc(sizeof(struct json_object));
 	if (res == NULL)
@@ -76,72 +114,27 @@ static struct json_object *json_object_create(enum json_type type, del_func *del
 
 	res->delete = delete;
 	res->equals = equals;
+	res->s_length = s_length;
+	res->print = print;
 	res->ref_count = 1;
 	res->type = type;
 	return res;
 }
 
-static void delete_primitive(struct json_object *obj)
-{
-	free(obj);
-}
-
-static void delete_string(struct json_object *obj)
-{
-	if (obj == NULL)
-		return;
-	free(obj->data.c_string);
-	free(obj);
-}
-
-static void delete_array(struct json_object *obj)
-{
-	if (obj == NULL || obj->type != json_type_array)
-		return;
-
-	struct list_head *p, *n;
-	struct array_list_entry *e;
-	list_for_each_safe(p, n, &obj->data.array_list) {
-		e = list_entry(p, struct array_list_entry, list);
-		json_ref_put(e->obj);
-		list_del(p);
-		free(e);
-	}
-
-	free(obj);
-}
-
-static void delete_object(struct json_object *obj)
-{
-	if (obj == NULL || obj->type != json_type_object)
-		return;
-
-	struct list_head *p, *n;
-	struct object_list_entry *e;
-	list_for_each_safe(p, n, &obj->data.object_list) {
-		e = list_entry(p, struct object_list_entry, list);
-		json_ref_put(e->obj);
-		list_del(p);
-		free(e->key);
-		free(e);
-	}
-
-	free(obj);
-}
 
 struct json_object *json_int_new(int i)
 {
-	JSON_OBJECT_CREATE(json_type_int, c_int, delete_primitive, int_equals, i);
+	JSON_OBJECT_CREATE(int, i, delete_primitive);
 }
 
 struct json_object *json_double_new(double d)
 {
-	JSON_OBJECT_CREATE(json_type_double, c_double, delete_primitive, double_equals, d);
+	JSON_OBJECT_CREATE(double, d, delete_primitive);
 }
 
 struct json_object *json_boolean_new(boolean b)
 {
-	JSON_OBJECT_CREATE(json_type_boolean, c_boolean, delete_primitive, boolean_equals, b);
+	JSON_OBJECT_CREATE(boolean, b, delete_primitive);
 }
 
 struct json_object *json_string_new(char *s)
@@ -150,7 +143,7 @@ struct json_object *json_string_new(char *s)
 	if (str_copy == NULL)
 		return NULL;
 
-	JSON_OBJECT_CREATE(json_type_string, c_string, delete_string, string_equals, str_copy);
+	JSON_OBJECT_CREATE(string, str_copy, delete_string);
 }
 
 struct json_object *json_string_new_len(char *s, size_t len)
@@ -161,12 +154,12 @@ struct json_object *json_string_new_len(char *s, size_t len)
 	strncpy(str_copy, s, len);
 	str_copy[len] = '\0';
 
-	JSON_OBJECT_CREATE(json_type_string, c_string, delete_string, string_equals, str_copy);
+	JSON_OBJECT_CREATE(string, str_copy, delete_string);
 }
 
 struct json_object *json_null_new()
 {
-	return json_object_create(json_type_null, delete_primitive, null_equals);
+	return json_object_create(json_type_null, delete_primitive, null_equals, null_string_length, null_print);
 }
 
 int json_int_get(struct json_object *obj)
@@ -191,7 +184,7 @@ char *json_string_get(struct json_object *obj)
 
 struct json_object *json_array_new()
 {
-	struct json_object *res = json_object_create(json_type_array, delete_array, array_equals);
+	struct json_object *res = json_object_create(json_type_array, delete_array, array_equals, array_string_length, array_print);
 	if (res == NULL)
 		return NULL;
 
@@ -249,7 +242,7 @@ int json_array_add(struct json_object *obj, struct json_object *val)
 
 struct json_object *json_object_new()
 {
-	struct json_object *res = json_object_create(json_type_object, delete_object, object_equals);
+	struct json_object *res = json_object_create(json_type_object, delete_object, object_equals, object_string_length, object_print);
 	if (res == NULL)
 		return NULL;
 
@@ -311,14 +304,25 @@ int json_object_add(struct json_object *obj, char *key, struct json_object *val)
 
 	new_entry->obj = val;
 	new_entry->key = new_key;
-	list_add(&new_entry->list, &obj->data.object_list);
+	list_add_tail(&new_entry->list, &obj->data.object_list);
 
 	return 0;
 }
 
 char *json_to_string(struct json_object *obj)
 {
-	return NULL;
+	if (obj == NULL)
+		return NULL;
+
+	int len = obj->s_length(obj);
+	char *res = (char *)malloc(len + 1);
+	if (res == NULL)
+		return NULL;
+	bzero(res, len + 1);
+
+	obj->print(obj, res);
+
+	return res;
 }
 
 enum json_type json_type(struct json_object *obj)
@@ -344,6 +348,15 @@ struct json_object *json_ref_get(struct json_object *obj)
 	obj->ref_count++;
 	return obj;
 }
+
+int json_equals(struct json_object *obj_1, struct json_object *obj_2)
+{
+	if (obj_1 == NULL || obj_2 == NULL)
+		return -1;
+
+	return obj_1->equals(obj_1, obj_2);
+}
+
 
 static int int_equals(struct json_object *obj_1, struct json_object *obj_2)
 {
@@ -435,10 +448,190 @@ static int object_equals(struct json_object *obj_1, struct json_object *obj_2)
 	return 0;
 }
 
-int json_equals(struct json_object *obj_1, struct json_object *obj_2)
+static void delete_primitive(struct json_object *obj)
 {
-	if (obj_1 == NULL || obj_2 == NULL)
-		return -1;
+	free(obj);
+}
 
-	return obj_1->equals(obj_1, obj_2);
+static void delete_string(struct json_object *obj)
+{
+	if (obj == NULL)
+		return;
+	free(obj->data.c_string);
+	free(obj);
+}
+
+static void delete_array(struct json_object *obj)
+{
+	if (obj == NULL || obj->type != json_type_array)
+		return;
+
+	struct list_head *p, *n;
+	struct array_list_entry *e;
+	list_for_each_safe(p, n, &obj->data.array_list) {
+		e = list_entry(p, struct array_list_entry, list);
+		json_ref_put(e->obj);
+		list_del(p);
+		free(e);
+	}
+
+	free(obj);
+}
+
+static void delete_object(struct json_object *obj)
+{
+	if (obj == NULL || obj->type != json_type_object)
+		return;
+
+	struct list_head *p, *n;
+	struct object_list_entry *e;
+	list_for_each_safe(p, n, &obj->data.object_list) {
+		e = list_entry(p, struct object_list_entry, list);
+		json_ref_put(e->obj);
+		list_del(p);
+		free(e->key);
+		free(e);
+	}
+
+	free(obj);
+}
+
+static void array_print(struct json_object *obj, char *buf)
+{
+	strcat(buf, "[");
+	if (list_empty(&obj->data.array_list)) {
+		strcat(buf, "]");
+		return;
+	}
+
+	struct array_list_entry *pos;
+	struct list_head *head = &obj->data.array_list;
+	for (pos = list_entry((head)->next, typeof(*pos), list); &pos->list != head && pos->list.next != head; 					\
+	     pos = list_entry(pos->list.next, typeof(*pos), list)) {
+		pos->obj->print(pos->obj, buf);
+		strcat(buf, ", ");
+	}
+	pos->obj->print(pos->obj, buf);
+	strcat(buf, "]");
+}
+
+static void print_object_entry(struct object_list_entry *entry, char *buf)
+{
+	strcat(buf, "\"");
+	strcat(buf, entry->key);
+	strcat(buf, "\": ");
+	entry->obj->print(entry->obj, buf);
+}
+
+static void object_print(struct json_object *obj, char *buf)
+{
+	strcat(buf, "{");
+	if (list_empty(&obj->data.object_list)) {
+		strcat(buf, "}");
+		return;
+	}
+
+	struct object_list_entry *pos;
+	struct list_head *head = &obj->data.object_list;
+	for (pos = list_entry((head)->next, typeof(*pos), list); &pos->list != head && pos->list.next != head; 					\
+	     pos = list_entry(pos->list.next, typeof(*pos), list)) {
+		print_object_entry(pos, buf);
+		strcat(buf, ", ");
+	}
+	print_object_entry(pos, buf);
+	strcat(buf, "}");
+}
+
+static void int_print(struct json_object *obj, char *buf)
+{
+	char tmp[MAX_NUMBER_LENGTH] = {0};
+	sprintf(tmp, "%d", obj->data.c_int);
+	strcat(buf, tmp);
+}
+
+static void double_print(struct json_object *obj, char *buf)
+{
+	char tmp[MAX_NUMBER_LENGTH] = {0};
+	sprintf(tmp, "%f", obj->data.c_double);
+	strcat(buf, tmp);
+}
+
+static void string_print(struct json_object *obj, char *buf)
+{
+	strcat(buf, "\"");
+	strcat(buf, obj->data.c_string);
+	strcat(buf, "\"");
+}
+
+static void null_print(struct json_object *obj, char *buf)
+{
+	strcat(buf, NULL_STRING);
+}
+
+static void boolean_print(struct json_object *obj, char *buf)
+{
+	if (obj->data.c_boolean == TRUE)
+		strcat(buf, TRUE_STRING);
+	else
+		strcat(buf, FALSE_STRING);
+}
+
+static int array_string_length(struct json_object *obj)
+{
+	int len = 1;//"["
+	struct array_list_entry *e;
+	list_for_each_entry(e, &obj->data.array_list, list) {
+		len += e->obj->s_length(e->obj);
+		len += 2;//", "
+	}
+	len -= 2;
+	len += 1;//"]"
+
+	return len;
+}
+
+static int object_string_length(struct json_object *obj)
+{
+	int len = 1;//"{"
+	struct object_list_entry *e;
+	list_for_each_entry(e, &obj->data.object_list, list) {
+		len += 1;
+		len += strlen(e->key);
+		len += 3;//"\": "
+		len += e->obj->s_length(e->obj);
+		len += 2;//", "
+	}
+	len -= 2;
+	len += 1;//"}"
+
+	return len;
+}
+
+static int int_string_length(struct json_object *obj)
+{
+	char tmp [MAX_NUMBER_LENGTH] = {0};
+	sprintf(tmp, "%d", obj->data.c_int);
+	return strlen(tmp);
+}
+
+static int double_string_length(struct json_object *obj)
+{
+	char tmp [MAX_NUMBER_LENGTH] = {0};
+	sprintf(tmp, "%f", obj->data.c_double);
+	return strlen(tmp);
+}
+
+static int boolean_string_length(struct json_object *obj)
+{
+	return obj->data.c_boolean == TRUE ? strlen(TRUE_STRING) : strlen(FALSE_STRING);
+}
+
+static int string_string_length(struct json_object *obj)
+{
+	return strlen(obj->data.c_string) + 2;//"string"
+}
+
+static int null_string_length(struct json_object *obj)
+{
+	return strlen(NULL_STRING);
 }

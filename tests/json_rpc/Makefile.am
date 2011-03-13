@@ -6,5 +6,9 @@ libcheckjsonrpc_la_SOURCES = check_json_rpc.h \
 			common.h \
 			check_json_rpc_process.h \
 			check_json_rpc_process.c \
+			check_json_rpc_over_http.h \
+			check_json_rpc_over_http.c \
+			json_rpc_check_util.h \
+			json_rpc_check_util.c
 			$(top_builddir)/src/json_rpc/json_rpc.h
 libcheckjsonrpc_la_LIBADD = $(top_builddir)/src/json_rpc/libjsonrpc.la @CHECK_LIBS@
