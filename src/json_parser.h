@@ -8,7 +8,7 @@
 #ifndef JSON_PARSER_H_
 #define JSON_PARSER_H_
 
-#include "../json/json.h"
+#include "json.h"
 #include <stdlib.h>
 
 

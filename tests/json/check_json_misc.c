@@ -1,6 +1,6 @@
 #include "check_json_misc.h"
 
-#include "../../src/json_parser/json_parser.h"
+#include "../../src/json_parser.h"
 
 #define CHECK_INT 5
 

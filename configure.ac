@@ -37,11 +37,6 @@ AC_CONFIG_HEADERS([config.h])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/json/Makefile
-                 src/json_parser/Makefile
-                 src/json_rpc/Makefile
-                 src/util/Makefile
-                 src/https/Makefile
                  tests/Makefile
                  tests/json/Makefile
                  tests/json_parser/Makefile

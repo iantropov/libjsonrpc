@@ -1,6 +1,6 @@
 #include <event.h>
 
-#include "../../src/json_parser/json_parser.h"
+#include "../../src/json_parser.h"
 #include <check.h>
 
 #define REQUEST_ID "id"

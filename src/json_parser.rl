@@ -6,9 +6,9 @@
  */
 
 #include "json_parser.h"
-#include "../util/string_functions.h"
+#include "string_functions.h"
 #include "json_parser.h"
-#include "../util/list.h"
+#include "list.h"
 
 #include <stdio.h>
 #include <stdlib.h>

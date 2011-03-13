@@ -6,8 +6,8 @@
  */
 
 #include "json.h"
-#include "../util/list.h"
-#include "../util/string_functions.h"
+#include "list.h"
+#include "string_functions.h"
 
 #include <stdlib.h>
 #include <string.h>

@@ -1,11 +1,15 @@
 ## Process this file with automake to produce Makefile.in
 
-bin_PROGRAMS = main
-main_SOURCES = main.c
-main_LDADD = 	json/libjson.la \
-		json_parser/libjsonparser.la \
-		json_rpc/libjsonrpc.la \
-		util/libutil.la \
-		https/libhttps.la
+lib_LTLIBRARIES = libjsonrpc.la
 
-SUBDIRS=json util json_parser json_rpc https .
+json_parser.c : json_parser.rl
+	ragel -o $@ $<
+
+libjsonrpc_la_SOURCES = http.c \
+						json.c json.h \
+						json_parser.h json_parser.c \
+						json_rpc.h json_rpc.c json_rpc_over_http.c \
+						list.h string_functions.c string_functions.h
+
+library_includedir=$(includedir)/jsonrpc
+library_include_HEADERS = json.h json_parser.h json_rpc.h https.h

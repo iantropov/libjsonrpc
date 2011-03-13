@@ -6,5 +6,4 @@ libcheckjsonparser_la_SOURCES = check_json_parser.h \
 			common.h \
 			check_json_parser_parse.h \
 			check_json_parser_parse.c \
-			$(top_builddir)/src/json_parser/json_parser.h
-libcheckjsonparser_la_LIBADD = $(top_builddir)/src/json_parser/libjsonparser.la @CHECK_LIBS@
+			$(top_builddir)/src/json_parser.h

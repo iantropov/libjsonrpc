@@ -2,6 +2,6 @@
 #define COMMON_H
 
 #include <check.h>
-#include "../../src/json_rpc/json_rpc.h"
+#include "../../src/json_rpc.h"
 
 #endif

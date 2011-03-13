@@ -7,8 +7,8 @@
 
 #include "json_rpc.h"
 
-#include "../util/list.h"
-#include "../util/string_functions.h"
+#include "list.h"
+#include "string_functions.h"
 
 #include <event.h>
 #include <string.h>

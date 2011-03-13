@@ -6,8 +6,8 @@
  */
 
 #include "json_rpc.h"
-#include "../json_parser/json_parser.h"
-#include "../util/string_functions.h"
+#include "json_parser.h"
+#include "string_functions.h"
 
 #include <string.h>
 

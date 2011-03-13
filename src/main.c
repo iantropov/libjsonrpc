@@ -5,7 +5,7 @@
  *      Author: ant
  */
 
-#include "util/list.h"
+#include "list.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -22,10 +22,10 @@
 #include <fcntl.h>
 
 
-#include "json/json.h"
-#include "json_rpc/json_rpc.h"
-#include "json_parser/json_parser.h"
-#include "https/https.h"
+#include "json.h"
+#include "json_rpc.h"
+#include "json_parser.h"
+#include "https.h"
 
 struct my_list {
 	int value;

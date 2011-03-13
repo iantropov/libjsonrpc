@@ -2,7 +2,7 @@
 
 #include <event.h>
 
-#include "../../src/json_parser/json_parser.h"
+#include "../../src/json_parser.h"
 #include "json_rpc_check_util.h"
 
 #define REQUEST_ID "id"

@@ -8,7 +8,7 @@
 #ifndef JSON_RPC_H_
 #define JSON_RPC_H_
 
-#include "../json/json.h"
+#include "json.h"
 
 #include <evhttp.h>
 
