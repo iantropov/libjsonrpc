@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include "json_rpc_check_util.h"
+
 #define REQUEST_ID "id"
 #define REQUEST_PARAMS "params"
 #define REQUEST_METHOD "method"
