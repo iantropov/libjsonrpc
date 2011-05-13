@@ -36,7 +36,7 @@ struct event *ev_read;
 int sock;
 const struct timeval tv = {0, 100000};
 
-static void test_1(struct json_rpc *jr, struct json_object *p, void *arg)
+static void test_1(struct json_rpc_request *jr, struct json_object *p, void *arg)
 {
 	fail_unless(json_type(p) == json_type_array, "type");
 	fail_unless(json_array_length(p) == 1, "length");
@@ -46,7 +46,7 @@ static void test_1(struct json_rpc *jr, struct json_object *p, void *arg)
 	json_rpc_return(jr, json_ref_get(p));
 }
 
-static void test_2(struct json_rpc *jr, struct json_object *p, void *arg)
+static void test_2(struct json_rpc_request *jr, struct json_object *p, void *arg)
 {
 	fail_unless(json_type(p) == json_type_object, "type");
 	fail_unless(json_type(json_object_get(p, "c")) == json_type_int, "get");
@@ -101,7 +101,7 @@ static void read_response(int sock, short type, void *arg)
 static void prepare_server_side()
 {
 	eh = evhttp_start("127.0.0.1", HTTP_PORT);
-	jr = json_rpc_init();
+	jr = json_rpc_new();
 
 	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
 	fail_unless(json_rpc_add_method(jr, "test_2", test_2, NULL) == 0, "add");
@@ -112,7 +112,7 @@ static void prepare_server_side()
 static void clean_server_side()
 {
 	evhttp_free(eh);
-	json_rpc_destroy(jr);
+	json_rpc_free(jr);
 }
 
 static void post_request(int sock, struct json_object *call)

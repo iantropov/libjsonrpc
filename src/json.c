@@ -240,6 +240,25 @@ int json_array_add(struct json_object *obj, struct json_object *val)
 	return 0;
 }
 
+void json_array_del(struct json_object *obj, int ind)
+{
+	if (obj == NULL || ind < 0 || obj->type != json_type_array)
+		return;
+
+	struct list_head *p, *n;
+	struct array_list_entry *entry;
+	int i = 0;
+	list_for_each_safe(p, n, &obj->data.array_list) {
+		if (i++ != ind)
+			continue;
+		entry = list_entry(p, struct array_list_entry, list);
+		list_del(p);
+		json_ref_put(entry->obj);
+		free(entry);
+		break;
+	}
+}
+
 struct json_object *json_object_new()
 {
 	struct json_object *res = json_object_create(json_type_object, delete_object, object_equals, object_string_length, object_print);
@@ -408,11 +427,18 @@ static int array_equals(struct json_object *obj_1, struct json_object *obj_2)
 	if (len_1 != len_2)
 		return -1;
 
-	struct array_list_entry *p;
-	int count = 0;
-	list_for_each_entry(p, &obj_1->data.array_list, list)
-		if (p->obj->equals(p->obj, json_array_get(obj_2, count++)) != 0)
+	struct array_list_entry *p, *q;
+	int count = 0, is_equal;
+	list_for_each_entry(p, &obj_1->data.array_list, list) {
+		is_equal = 0;
+
+		list_for_each_entry(q, &obj_2->data.array_list, list)
+			if (p->obj->equals(p->obj, q->obj) == 0)
+				is_equal = 1;
+
+		if (!is_equal)
 			return -1;
+	}
 
 	return 0;
 }

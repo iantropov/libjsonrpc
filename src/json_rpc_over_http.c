@@ -11,19 +11,9 @@
 
 #include <string.h>
 
-#define JSON_RPC_PARSE_ERROR "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32700, \"message\":\"Parse error.\"}, \"id\": null}"
 #define HTTP_PARSE_ERROR_REASON "Parse error."
-#define JSON_RPC_INTERNAL_ERROR "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32603, \"message\":\"Internal error.\"}, \"id\": null}"
 #define HTTP_INTERNAL_ERROR_REASON "Internal error."
 #define HTTP_SUCCESS_REASON "OK"
-
-#define JSON_RPC_ERROR_MEMBER "error"
-#define JSON_RPC_ERROR_CODE_MEMBER "code"
-#define JSON_RPC_ERROR_MESSAGE_MEMBER "message"
-
-#define ERROR_INVALID_REQUEST_CODE -32600
-#define ERROR_METHOD_NOT_FOUND_CODE -32601
-#define ERROR_INTERNAL_CODE -32603
 
 #define HTTP_INVALID_REQUEST_STATUS 400
 #define HTTP_METHOD_NOT_FOUND_STATUS 404
@@ -97,7 +87,7 @@ static void send_reply(struct evhttp_request *req, struct json_object *obj)
 	}
 }
 
-static void json_rpc_result(struct json_rpc *jr, struct json_object *res, void *arg)
+static void jrpc_result(struct json_rpc *jr, struct json_object *res, void *arg)
 {
 	struct evhttp_request *req = (struct evhttp_request *)arg;
 
@@ -122,9 +112,7 @@ static void json_rpc_call(struct evhttp_request *req, void *arg)
 	if (obj == NULL)
 		send_http_reply(req, HTTP_PARSE_ERROR_STATUS, HTTP_PARSE_ERROR_REASON, JSON_RPC_PARSE_ERROR);
 	else
-		json_rpc_process(jr, obj, json_rpc_result, (void *)req);
-
-
+		json_rpc_process(jr, obj, jrpc_result, (void *)req);
 }
 
 void evhttp_set_json_rpc(struct evhttp *eh, char *uri, struct json_rpc *jr)

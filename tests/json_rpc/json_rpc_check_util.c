@@ -3,6 +3,14 @@
 #include "../../src/json_parser.h"
 #include <check.h>
 
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <memory.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 #define REQUEST_ID "id"
 #define REQUEST_PARAMS "params"
 #define REQUEST_METHOD "method"
@@ -99,4 +107,84 @@ struct json_object *create_batched_response(struct json_object *results,struct j
 	json_ref_put(results);
 	json_ref_put(ids);
 	return ar;
+}
+
+int util_connect_to_port(int port)
+{
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	struct sockaddr_in sin_server;
+	struct hostent *host_serv;
+	memset(&sin_server, '\0', sizeof(sin_server));
+	sin_server.sin_family = AF_INET;
+	sin_server.sin_port = htons(port);
+	host_serv = gethostbyname("localhost");
+	memcpy((char *)&sin_server.sin_addr, host_serv->h_addr_list[0], host_serv->h_length);
+	if (connect(sock, (struct sockaddr *)&sin_server, sizeof(sin_server)) == -1){
+		perror("connect");
+		return -1;
+	}
+	return sock;
+}
+
+void util_send_handshake(struct bufevent *bufev, char *uri, char *host, int port)
+{
+	struct evbuffer *buf = evbuffer_new();
+
+	evbuffer_add_printf(buf, "GET %s HTTP/1.1\r\n", uri);
+	evbuffer_add_printf(buf, "Upgrade: WebSocket\r\n");
+	evbuffer_add_printf(buf, "Connection: Upgrade\r\n");
+	evbuffer_add_printf(buf, "Host: %s:%d\r\n", host, port);
+	evbuffer_add_printf(buf, "Origin: null\r\n");
+
+	evbuffer_add_printf(buf, "Sec-WebSocket-Key1: 18x 6]8vM;54 *(5:  {   U1]8  z [  8\r\n");
+	evbuffer_add_printf(buf, "Sec-WebSocket-Key2: 1_ tx7X d  <  nw  334J702) 7]o}` 0\r\n");
+
+	evbuffer_add_printf(buf, "\r\n");
+
+	evbuffer_add(buf, "Tm[K T2u", 8);
+
+	bufevent_write_buffer(bufev, buf);
+
+	evbuffer_free(buf);
+}
+
+void util_send_ws_closing_frame(struct bufevent *bufev)
+{
+	struct evbuffer *buf = evbuffer_new();
+
+	evbuffer_add(buf, "\xff", 1);
+
+	evbuffer_add(buf, "\x00", 1);
+
+	bufevent_write_buffer(bufev, buf);
+
+	evbuffer_free(buf);
+}
+
+void util_send_ws_frame(struct bufevent *bufev, u_char *mess)
+{
+	struct evbuffer *buf = evbuffer_new();
+
+	evbuffer_add(buf, "\x00", 1);
+
+	evbuffer_add(buf, mess, strlen((char *)mess));
+
+	evbuffer_add(buf, "\xff", 1);
+
+	bufevent_write_buffer(bufev, buf);
+
+	evbuffer_free(buf);
+}
+
+struct json_object *util_get_json_from_ws_frame(struct bufevent *bufev)
+{
+	struct evbuffer *buf = bufevent_get_input(bufev);
+
+	char *str = strndup(buf->buffer +1, buf->off - 2);
+
+	struct json_object *obj = json_parser_parse(str);
+
+	free(str);
+
+	return obj;
 }

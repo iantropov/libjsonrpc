@@ -35,6 +35,7 @@ struct json_object *json_array_new();
 int json_array_length(struct json_object *obj);
 struct json_object *json_array_get(struct json_object *obj, int i);
 int json_array_add(struct json_object *obj, struct json_object *val);
+void json_array_del(struct json_object *obj, int ind);
 
 struct json_object *json_object_new();
 struct json_object *json_object_get(struct json_object *obj, char *key);

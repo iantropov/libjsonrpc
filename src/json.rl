@@ -20,10 +20,10 @@
 	uni_area_3 = 0xf0..0xf7 uni uni uni;
 	uni_token = uni_ascii_area | uni_area_1 | uni_area_2 | uni_area_3;
 	string = "\"" uni_token*  >A_save_start %A_save_string "\"";
-	value = begin_array  | begin_object | num | string |
-			( "null" %A_save_null ) | ( "true" %A_save_true ) | ( "false" %A_save_false );
+	json_value = begin_array  | begin_object | num | string |
+			( "null" %to(A_save_null) ) | ( "true" %to(A_save_true) ) | ( "false" %to(A_save_false) );
+	non_plain_json_value = begin_array | begin_object;
 	name = '"' uni_token* >A_save_start %A_save_name '"'sp ":" sp ;
-	object := (sp ((name value s_r_s)* name value sp)? end_object) $lerr(A_err);
-	array := (sp ((value s_r_s)* value sp)? end_array) $lerr(A_err);
-	Request_json = value %to(A_final);	
+	object := (sp ((name json_value s_r_s)* name json_value sp)? end_object) $lerr(A_err);
+	array := (sp ((json_value s_r_s)* json_value sp)? end_array) $lerr(A_err);
 }%%

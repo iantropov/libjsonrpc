@@ -113,6 +113,94 @@ START_TEST(test_array_get)
 }
 END_TEST
 
+START_TEST(test_array_del_0)
+{
+	struct json_object *ar = json_array_new();
+
+	json_array_del(ar, 0);
+
+	fail_unless(json_type(ar) == json_type_array, "JA bad type");
+
+	fail_unless(json_array_length(ar) == 0, "JA bad length");
+
+	json_ref_put(ar);
+}
+END_TEST
+
+START_TEST(test_array_del_1)
+{
+	struct json_object *j_int = json_int_new(5);
+	struct json_object *ar = json_array_new();
+
+	fail_unless(json_array_add(ar, j_int) == 0, "JA add error");
+
+	json_array_del(ar, 0);
+
+	fail_unless(json_array_length(ar) == 0, "JA bad length");
+
+	json_ref_put(ar);
+}
+END_TEST
+
+START_TEST(test_array_del_2)
+{
+	struct json_object *j_int = json_int_new(5);
+	struct json_object *ar = json_array_new();
+
+	fail_unless(json_array_add(ar, j_int) == 0, "JA add error");
+
+	fail_unless(json_array_add(ar, json_ref_get(j_int)) == 0, "JA add error");
+
+	fail_unless(json_array_add(ar, json_ref_get(j_int)) == 0, "JA add error");
+
+	json_array_del(ar, 3);
+
+	fail_unless(json_array_length(ar) == 3, "JA bad length");
+
+	json_array_del(ar, 1);
+
+	fail_unless(json_array_length(ar) == 2, "JA bad length");
+
+	fail_unless(json_array_get(ar, 0) == j_int, "JA get at valid index error");
+	fail_unless(json_array_get(ar, 1) == j_int, "JA get at valid index error");
+
+	json_array_del(ar, 1);
+
+	fail_unless(json_array_get(ar, 0) == j_int, "JA get at valid index error");
+
+	fail_unless(json_array_get(ar, 1) == NULL, "JA get at invalid index error");
+
+	json_ref_put(ar);
+}
+END_TEST
+
+START_TEST(test_array_del_3)
+{
+	struct json_object *j_int_1 = json_int_new(5);
+	struct json_object *j_int_2 = json_int_new(10);
+	struct json_object *j_int_3 = json_int_new(15);
+
+
+	struct json_object *ar = json_array_new();
+
+	fail_unless(json_array_add(ar, j_int_1) == 0, "JA add error");
+	fail_unless(json_array_add(ar, j_int_2) == 0, "JA add error");
+	fail_unless(json_array_add(ar, j_int_3) == 0, "JA add error");
+
+	json_array_del(ar, 1);
+
+	fail_unless(json_array_length(ar) == 2, "JA bad length");
+
+	fail_unless(json_array_get(ar, 0) == j_int_1, "JA get at valid index error");
+	fail_unless(json_array_get(ar, 1) == j_int_3, "JA get at valid index error");
+
+	json_array_del(ar, 1);
+
+	fail_unless(json_array_get(ar, 0) == j_int_1, "JA get at invalid index error");
+
+	json_ref_put(ar);
+}
+END_TEST
 
 TCase *
 json_array_tcase (void)
@@ -121,8 +209,15 @@ json_array_tcase (void)
 
 	tcase_add_test(tc, test_array_create_empty);
 	tcase_add_test(tc, test_array_create);
+
 	tcase_add_test(tc, test_array_use);
+
 	tcase_add_test(tc, test_array_get);
+
+	tcase_add_test(tc, test_array_del_0);
+	tcase_add_test(tc, test_array_del_1);
+	tcase_add_test(tc, test_array_del_2);
+	tcase_add_test(tc, test_array_del_3);
 
 	return tc;
 }

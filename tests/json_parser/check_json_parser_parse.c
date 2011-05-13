@@ -7,6 +7,8 @@ START_TEST (test_valid)
 
     fail_unless(json_type(j_int) == json_type_int, "bad type");
     fail_unless(json_int_get(j_int) == 2, "bad value");
+
+    json_ref_put(j_int);
 }
 END_TEST
 
@@ -25,6 +27,8 @@ START_TEST (test_valid_2)
 
     fail_unless(json_int_get(j_int0) == 2, "bad value");
     fail_unless(json_int_get(j_int1) == 3, "bad value");
+
+    json_ref_put(obj);
 }
 END_TEST
 
@@ -50,6 +54,8 @@ START_TEST (test_valid_3)
     fail_unless(json_int_get(j_int1) == 45, "bad value");
     fail_unless(json_int_get(j_int2) == 2, "bad value");
     fail_unless(strcmp(json_string_get(j_str), "val") == 0, "bad value");
+
+    json_ref_put(j_ar);
 }
 END_TEST
 
@@ -72,6 +78,7 @@ START_TEST (test_invalid)
 	check_as_invalid("{\"cd\":,}");
 	check_as_invalid("");
 	check_as_invalid("p1=v1&p2=v2");
+	check_as_invalid("[2,3][");
 }
 END_TEST
 

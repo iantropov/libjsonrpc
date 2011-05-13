@@ -102,6 +102,17 @@ START_TEST(test_equils_6)
 }
 END_TEST
 
+START_TEST(test_equils_7)
+{
+	struct json_object *j_1 = json_parser_parse("[1, 2]");
+	struct json_object *j_2 = json_parser_parse("[2, 1]");
+
+	fail_unless(json_equals(j_1, j_2) == 0, "equils");
+
+	json_ref_put(j_1);
+	json_ref_put(j_2);
+}
+END_TEST
 
 void check_to_string(char *origin)
 {
@@ -133,6 +144,7 @@ TCase *json_misc_tcase (void)
 	tcase_add_test(tc, test_equils_4);
 	tcase_add_test(tc, test_equils_5);
 	tcase_add_test(tc, test_equils_6);
+	tcase_add_test(tc, test_equils_7);
 
 	tcase_add_test(tc, test_to_string_1);
 

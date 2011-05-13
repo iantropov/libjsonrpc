@@ -9,24 +9,28 @@
 
 #include "list.h"
 #include "string_functions.h"
+#include "log.h"
 
 #include <event.h>
 #include <string.h>
 
 struct json_rpc {
 	struct list_head methods;
+};
 
-	json_rpc_method *user_result_method;
-	void *user_result_method_arg;
-
-	struct json_object *current_method_id;
-	json_rpc_method *process_method;
-	void *process_method_arg;
-
-	int batch_length;
-	int current_batch_ind;
-	struct json_object *batch;
+struct json_rpc_request {
 	struct json_object *result_batch;
+	int result_count;
+	int waiting_result_count;
+
+	struct json_rpc *jr;
+
+	json_rpc_result user_cb;
+	void *cb_arg;
+
+	json_rpc_method return_cb;
+
+	struct json_object *method_id;
 };
 
 enum call_type {request_call, notification_call, invalid_call};
@@ -34,21 +38,18 @@ enum call_type {request_call, notification_call, invalid_call};
 struct json_rpc_list_entry {
 	struct list_head list;
 
-	json_rpc_method *method;
+	json_rpc_method method;
 	char *method_name;
 	void *method_arg;
 };
 
 struct deferred_call_data {
-	json_rpc_method *method;
+	json_rpc_method method;
 	struct json_object *obj;
-	struct json_rpc *jr;
+	struct json_rpc_request *req;
+	struct json_object *method_id;
 	void *method_arg;
-
-	struct event defer_ev;
-} call_data;
-
-const struct timeval defer_tv = {0, 0};
+};
 
 #define REQUEST_ID "id"
 #define REQUEST_PARAMS "params"
@@ -69,8 +70,17 @@ const struct timeval defer_tv = {0, 0};
 #define ERROR_INTERNAL "Internal error"
 #define ERROR_INTERNAL_CODE -32603
 
+static struct json_rpc_request *create_request(struct json_rpc *jr,
+		json_rpc_method res_cb, json_rpc_result user_cb, void *cb_arg);
+static void destroy_request(struct json_rpc_request *req);
 
-struct json_rpc *json_rpc_init()
+static struct json_object *prepare_response_object(struct json_object *id, struct json_object *res);
+static struct json_object *create_error_object(char *message, int code);
+static struct json_object *prepare_error_response(char *error_message, int error_code, struct json_object *id);
+static struct json_rpc_list_entry *lookup_entry(struct json_rpc *jr, char *name);
+static enum call_type eval_call_type(struct json_object *obj);
+
+struct json_rpc *json_rpc_new()
 {
 	struct json_rpc *jr = (struct json_rpc *)malloc(sizeof(struct json_rpc));
 	if (jr == NULL)
@@ -81,7 +91,7 @@ struct json_rpc *json_rpc_init()
 	return jr;
 }
 
-void json_rpc_destroy(struct json_rpc *jr)
+void json_rpc_free(struct json_rpc *jr)
 {
 	if (jr == NULL)
 		return;
@@ -98,12 +108,13 @@ void json_rpc_destroy(struct json_rpc *jr)
 	free(jr);
 }
 
-int json_rpc_add_method(struct json_rpc *jr, char *name, json_rpc_method *method, void *arg)
+int json_rpc_add_method(struct json_rpc *jr, char *name, json_rpc_method method, void *arg)
 {
 	struct json_rpc_list_entry *entry = (struct json_rpc_list_entry *)malloc(sizeof(struct json_rpc_list_entry));
-	if (entry == NULL)
+	if (entry == NULL) {
+		log_info("%s : malloc_failed", __func__);
 		return -1;
-
+	}
 	entry->method = method;
 	entry->method_arg = arg;
 	entry->method_name = string_copy(name);
@@ -135,26 +146,212 @@ void json_rpc_del_method(struct json_rpc *jr, char *name)
 	free(jr);
 }
 
-static void defer_call_wrap(int s, short t, void *arg)
+static void deferred_callcb(int s, short t, void *arg)
 {
 	struct deferred_call_data *data = (struct deferred_call_data *)arg;
+	struct json_rpc_request *req = data->req;
 
-	data->method(data->jr, data->obj, data->method_arg);
+	if (req != NULL)
+		req->method_id = data->method_id;
+
+	data->method(req, data->obj, data->method_arg);
 
 	free(data);
 }
 
-static void add_to_queue(json_rpc_method *method, struct json_rpc *jr, struct json_object *obj, void *arg)
+static void add_method_to_queue(json_rpc_method method, struct json_rpc_request *req,
+		struct json_object *obj, void *arg)
 {
 	struct deferred_call_data *call_data = (struct deferred_call_data *)malloc(sizeof(struct deferred_call_data));
-	if (call_data == NULL)
+	if (call_data == NULL) {
+		log_warn("%s : malloc failed. Method won`t dispath", __func__);
 		return;
-	call_data->jr = jr;
+	}
+
+	call_data->req = req;
 	call_data->obj = obj;
 	call_data->method = method;
+	if (req != NULL)
+		call_data->method_id = req->method_id;
 	call_data->method_arg = arg;
-	event_set(&call_data->defer_ev, 0, EV_TIMEOUT, defer_call_wrap, (void *)call_data);
-	event_add(&call_data->defer_ev, &defer_tv);
+	struct timeval tv = {0, 1};
+	if (event_once(-1, EV_TIMEOUT, deferred_callcb, (void *)call_data, &tv) == -1)
+		log_warn("%s : event_once failed. Method won`t dispath", __func__);
+}
+
+static void process_error(struct json_rpc_request *req, char *err_message, int err_code, struct json_object *id)
+{
+	struct json_object *j_err = prepare_error_response(err_message, err_code, id);
+	if (j_err == NULL)
+		log_warn("%s : prepare_error_response failed", __func__);
+
+	add_method_to_queue(req->return_cb, req, j_err, req->cb_arg);
+}
+
+static void process_error_final(struct json_rpc *jr, json_rpc_result user_cb, void *arg, char *e_mess, int e_code)
+{
+	struct json_object *j_err = prepare_error_response(e_mess, e_code, json_null_new());
+	if (j_err == NULL)
+		log_warn("%s : prepare_error_response failed", __func__);
+
+	user_cb(jr, j_err, arg);
+}
+
+static void dispatch_notification_call(struct json_rpc_request *req, struct json_object *obj)
+{
+	struct json_rpc_list_entry *entry = lookup_entry(req->jr, json_string_get(json_object_get(obj, REQUEST_METHOD)));
+
+	if (entry != NULL)
+		add_method_to_queue(entry->method, NULL, json_ref_get(json_object_get(obj, REQUEST_PARAMS)), entry->method_arg);
+}
+
+static void dispatch_request_call(struct json_rpc_request *req, struct json_object *obj)
+{
+	req->method_id = json_ref_get(json_object_get(obj, REQUEST_ID));
+
+	struct json_rpc_list_entry *entry = lookup_entry(req->jr, json_string_get(json_object_get(obj, REQUEST_METHOD)));
+	if (entry == NULL)
+		process_error(req, ERROR_METHOD_NOT_FOUND, ERROR_METHOD_NOT_FOUND_CODE, req->method_id);
+	else
+		add_method_to_queue(entry->method, req, json_ref_get(json_object_get(obj, REQUEST_PARAMS)), entry->method_arg);
+}
+
+static enum call_type dispatch_call(struct json_rpc_request *req, struct json_object *obj)
+{
+	enum call_type type = eval_call_type(obj);
+
+	if (type == invalid_call) {
+		process_error(req, ERROR_INVALID_REQUEST, ERROR_INVALID_REQUEST_CODE, json_null_new());
+		return invalid_call;
+	}
+
+	if (type == notification_call) {
+		dispatch_notification_call(req, obj);
+		return notification_call;
+	}
+
+	dispatch_request_call(req, obj);
+
+	return request_call;
+}
+
+static void single_result_cb(struct json_rpc_request *req, struct json_object *j_res, void *arg)
+{
+	req->user_cb(req->jr, j_res, req->cb_arg);
+	destroy_request(req);
+}
+
+static void batched_result_cb(struct json_rpc_request *req, struct json_object *j_res, void *arg)
+{
+	req->result_count++;
+
+	int ret = json_array_add(req->result_batch, j_res);
+	if (ret == -1)
+		log_warn("%s : json_array_add failed", __func__);
+
+	if (req->result_count != req->waiting_result_count)
+		return;
+
+	req->user_cb(req->jr, req->result_batch, req->cb_arg);
+	destroy_request(req);
+}
+
+static int process_batched_call(struct json_rpc *jr, struct json_object *batch, json_rpc_result user_cb, void *cb_arg)
+{
+	struct json_rpc_request *req = create_request(jr, batched_result_cb, user_cb, cb_arg);
+	if (req == NULL)
+		return -1;
+
+	int batch_length = json_array_length(batch);
+
+	req->result_batch = json_array_new();
+	if (req->result_batch == NULL) {
+		destroy_request(req);
+		return -1;
+	}
+
+	int i;
+	for (i = 0; i < batch_length; i++) {
+		if (dispatch_call(req, json_array_get(batch, i)) != notification_call)
+			req->waiting_result_count++;
+	}
+
+	if (req->waiting_result_count == 0) {
+		json_ref_put(req->result_batch);
+		destroy_request(req);
+	}
+
+	json_ref_put(batch);
+
+	return 0;
+}
+
+static int process_single_call(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg)
+{
+	struct json_rpc_request *req = create_request(jr, single_result_cb, user_cb, cb_arg);
+	if (req == NULL)
+		return -1;
+
+	if (dispatch_call(req, obj) == notification_call)
+		destroy_request(req);
+
+	json_ref_put(obj);
+
+	return 0;
+}
+
+void json_rpc_process(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg)
+{
+	int ret;
+	if (json_type(obj) == json_type_object)
+		ret = process_single_call(jr, obj, user_cb, cb_arg);
+	else if (json_type(obj) == json_type_array && json_array_length(obj) > 0)
+		ret = process_batched_call(jr, obj, user_cb, cb_arg);
+	else
+		process_error_final(jr, user_cb, cb_arg, ERROR_INVALID_REQUEST, ERROR_INVALID_REQUEST_CODE);
+
+	if (ret == -1)
+		process_error_final(jr, user_cb, cb_arg, ERROR_INTERNAL, ERROR_INTERNAL_CODE);
+}
+
+void json_rpc_return(struct json_rpc_request *req, struct json_object *res)
+{
+	if (req == NULL)
+		return;
+
+	struct json_object *json_rpc_res = prepare_response_object(req->method_id, res);
+	if (json_rpc_res == NULL) {
+		log_info("%s : prepare_response_object failed", __func__);
+		json_rpc_res = prepare_error_response(ERROR_INTERNAL, ERROR_INTERNAL_CODE, req->method_id);
+
+		if (json_rpc_res == NULL)
+			log_warn("%s : prepare_error_response failed", __func__);
+	}
+
+	add_method_to_queue(req->return_cb, req, json_rpc_res, req->cb_arg);
+}
+
+
+static struct json_rpc_request *create_request(struct json_rpc *jr,
+		json_rpc_method res_cb, json_rpc_result user_cb, void *cb_arg)
+{
+	struct json_rpc_request *req = (struct json_rpc_request *)calloc(1, sizeof(struct json_rpc_request));
+	if (req == NULL) {
+		log_info("%s : malloc failed", __func__);
+		return NULL;
+	}
+
+	req->return_cb = res_cb;
+	req->user_cb = user_cb;
+	req->cb_arg = cb_arg;
+	req->jr = jr;
+
+	return req;
+}
+
+static void destroy_request(struct json_rpc_request *req)
+{
+	free(req);
 }
 
 static struct json_object *prepare_response_object(struct json_object *id, struct json_object *res)
@@ -288,128 +485,4 @@ static enum call_type eval_call_type(struct json_object *obj)
 		return notification_call;
 
 	return request_call;
-}
-
-static void process_error(struct json_rpc *jr, char *err_message, int err_code, struct json_object *id)
-{
-	struct json_object *j_err = prepare_error_response(err_message, err_code, id);
-	add_to_queue(jr->process_method, jr, j_err, jr->process_method_arg);
-}
-
-static void process_error_final(struct json_rpc *jr, char *err_message, int err_code, struct json_object *id)
-{
-	struct json_object *j_err = prepare_error_response(err_message, err_code, id);
-	add_to_queue(jr->user_result_method, jr, j_err, jr->user_result_method_arg);
-}
-
-static void dispatch_call(struct json_rpc *jr, struct json_object *obj, json_rpc_method *notify_cb, json_rpc_method *req_cb, void *req_cb_arg)
-{
-	enum call_type type = eval_call_type(obj);
-
-	if (type != notification_call) {
-		jr->process_method = req_cb;
-		jr->process_method_arg = req_cb_arg;
-	} else
-		jr->process_method = notify_cb;
-
-	if (type == invalid_call) {
-		process_error(jr, ERROR_INVALID_REQUEST, ERROR_INVALID_REQUEST_CODE, json_null_new());
-		return;
-	}
-
-	jr->current_method_id = json_ref_get(json_object_get(obj, REQUEST_ID));
-
-	struct json_rpc_list_entry *entry = lookup_entry(jr, json_string_get(json_object_get(obj, REQUEST_METHOD)));
-	if (entry == NULL) {
-		process_error(jr, ERROR_METHOD_NOT_FOUND, ERROR_METHOD_NOT_FOUND_CODE, jr->current_method_id);
-		return;
-	}
-
-	add_to_queue(entry->method, jr, json_ref_get(json_object_get(obj, REQUEST_PARAMS)), entry->method_arg);
-}
-
-static void process_batched_notification(struct json_rpc *jr, struct json_object *j_res, void *arg);
-static void process_batched_request(struct json_rpc *jr, struct json_object *j_res, void *arg);
-
-static void process_batched_call_continue(struct json_rpc *jr)
-{
-	jr->current_batch_ind++;
-	if (jr->current_batch_ind < jr->batch_length) {
-		struct json_object *req = json_array_get(jr->batch, jr->current_batch_ind);
-		dispatch_call(jr, req, process_batched_notification, process_batched_request, NULL);
-		return;
-	}
-
-	if (json_array_length(jr->result_batch) > 0)
-		add_to_queue(jr->user_result_method, jr, jr->result_batch, jr->user_result_method_arg);
-	else
-		json_ref_put(jr->result_batch);
-
-	json_ref_put(jr->batch);
-}
-
-static void process_batched_request(struct json_rpc *jr, struct json_object *j_res, void *arg)
-{
-	int ret = json_array_add(jr->result_batch, j_res);
-	if (ret == -1) {
-		json_ref_put(jr->result_batch);
-		process_error_final(jr, ERROR_INTERNAL, ERROR_INTERNAL_CODE, json_null_new());
-		return;
-	}
-
-	process_batched_call_continue(jr);
-}
-
-static void process_batched_notification(struct json_rpc *jr, struct json_object *j_res, void *arg)
-{
-	json_ref_put(j_res);
-	process_batched_call_continue(jr);
-}
-
-static void process_batched_call(struct json_rpc *jr, struct json_object *obj)
-{
-	jr->batch_length = json_array_length(obj);
-	jr->batch = obj;
-	jr->current_batch_ind = -1;
-	jr->result_batch = json_array_new();
-	if (jr->result_batch == NULL) {
-		process_error_final(jr, ERROR_INTERNAL, ERROR_INTERNAL_CODE, json_null_new());
-		return;
-	}
-
-	process_batched_call_continue(jr);
-}
-
-static void notify_result(struct json_rpc *jr, struct json_object *res, void *arg)
-{
-	json_ref_put(res);
-}
-
-static void process_single_call(struct json_rpc *jr, struct json_object *obj)
-{
-	dispatch_call(jr, obj, notify_result, jr->user_result_method, jr->user_result_method_arg);
-
-	json_ref_put(obj);
-}
-
-void json_rpc_process(struct json_rpc *jr, struct json_object *obj, json_rpc_method *user_cb, void *user_cb_arg)
-{
-	jr->user_result_method = user_cb;
-	jr->user_result_method_arg = user_cb_arg;
-
-	if (json_type(obj) == json_type_object)
-		process_single_call(jr, obj);
-	else if (json_type(obj) == json_type_array && json_array_length(obj) > 0)
-		process_batched_call(jr, obj);
-	else
-		process_error_final(jr, ERROR_INVALID_REQUEST, ERROR_INVALID_REQUEST_CODE, json_null_new());
-}
-
-void json_rpc_return(struct json_rpc *jr, struct json_object *res)
-{
-	struct json_object *json_rpc_res = prepare_response_object(jr->current_method_id, res);
-	if (json_rpc_res == NULL && jr->current_method_id != NULL)
-		process_error(jr, ERROR_INTERNAL, ERROR_INTERNAL_CODE, jr->current_method_id);
-	else
-		add_to_queue(jr->process_method, jr, json_rpc_res, jr->process_method_arg);
 }

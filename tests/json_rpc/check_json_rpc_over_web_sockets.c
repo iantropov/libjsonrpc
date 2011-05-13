@@ -1,153 +1,4 @@
-/*
- * main.c
- *
- *  Created on: Feb 23, 2011
- *      Author: ant
- */
-
-#include "list.h"
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <event.h>
-#include <evhttp.h>
-
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <memory.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-#include "json.h"
-#include "json_rpc.h"
-#include "json_parser.h"
-
-struct my_list {
-	int value;
-	unsigned long b;
-	struct list_head list;
-};
-
-#define CHECK_INT 5
-#define CHECK_STR "cdcd"
-
-#define REQUEST_ID "id"
-#define REQUEST_PARAMS "params"
-#define REQUEST_METHOD "method"
-#define REQUEST_VERSION "jsonrpc"
-
-#define RESPONSE_ERROR "error"
-#define RESPONSE_ERROR_MESSAGE "message"
-#define RESPONSE_ERROR_CODE "code"
-#define RESPONSE_RESULT "result"
-
-#define JSON_RPC_VERSION "2.0"
-
-#define ERROR_INVALID_REQUEST_MESSAGE "Invalid request"
-#define ERROR_INVALID_REQUEST_CODE -32600
-#define ERROR_METHOD_NOT_FOUND_MESSAGE "Method not found"
-#define ERROR_METHOD_NOT_FOUND_CODE -32601
-#define ERROR_INTERNAL_MESSAGE "Internal error"
-#define ERROR_INTERNAL_CODE -32603
-
-struct json_rpc *jr;
-struct json_object *origin, *call;
-
-static int __call_info;
-static int __call_count;
-
-static int __waiting_error;
-static int __waiting_call_count;
-static int __waiting_call_info;
-
-static void fail_unless(boolean b, char *s)
-{
-	if (!b)
-		printf("%s\n", s);
-}
-
-struct json_object *util_get_json_from_ws_frame(struct bufevent *bufev)
-{
-	struct evbuffer *buf = bufevent_get_input(bufev);
-
-	char *str = strndup(buf->buffer +1, buf->off - 2);
-
-	struct json_object *obj = json_parser_parse(str);
-
-	free(str);
-
-	return obj;
-}
-
-void util_send_ws_frame(struct bufevent *bufev, u_char *mess)
-{
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add(buf, "\x00", 1);
-
-	evbuffer_add(buf, mess, strlen((char *)mess));
-
-	evbuffer_add(buf, "\xff", 1);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
-}
-
-void util_send_handshake(struct bufevent *bufev, char *uri, char *host, int port)
-{
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add_printf(buf, "GET %s HTTP/1.1\r\n", uri);
-	evbuffer_add_printf(buf, "Upgrade: WebSocket\r\n");
-	evbuffer_add_printf(buf, "Connection: Upgrade\r\n");
-	evbuffer_add_printf(buf, "Host: %s:%d\r\n", host, port);
-	evbuffer_add_printf(buf, "Origin: null\r\n");
-
-	evbuffer_add_printf(buf, "Sec-WebSocket-Key1: 18x 6]8vM;54 *(5:  {   U1]8  z [  8\r\n");
-	evbuffer_add_printf(buf, "Sec-WebSocket-Key2: 1_ tx7X d  <  nw  334J702) 7]o}` 0\r\n");
-
-	evbuffer_add_printf(buf, "\r\n");
-
-	evbuffer_add(buf, "Tm[K T2u", 8);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
-}
-
-static int get_random_port(int low, int high)
-{
-	time_t seed;
-	time(&seed);
-	if (low >= high)
-		return -1;
-	srandom(seed);
-	int n = random();
-	int res = low + n % (high - low);
-	return res;
-}
-
-static int connect_to_port(int port)
-{
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	struct sockaddr_in sin_server;
-	struct hostent *host_serv;
-	memset(&sin_server, '\0', sizeof(sin_server));
-	sin_server.sin_family = AF_INET;
-	sin_server.sin_port = htons(port);
-	host_serv = gethostbyname("localhost");
-	memcpy((char *)&sin_server.sin_addr, host_serv->h_addr_list[0], host_serv->h_length);
-	if (connect(sock, (struct sockaddr *)&sin_server, sizeof(sin_server)) == -1){
-		perror("connect");
-		return -1;
-	}
-	return sock;
-}
-
+#include "check.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -155,8 +6,10 @@ static int connect_to_port(int port)
 #include <event0/bufevent.h>
 #include <event.h>
 
-#include "json_rpc.h"
-#include "json_parser.h"
+#include "../../src/json_rpc.h"
+#include "../../src/json_parser.h"
+
+#include "json_rpc_check_util.h"
 
 #define CORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test1\", \"params\":[2], \"id\":2}"
 #define CORRECT_PARAMS "[2]"
@@ -298,7 +151,7 @@ static void prepare_client_side()
 	__client_jr = json_rpc_new();
 	fail_unless(__client_jr != NULL, "json_rpc_new failed");
 
-	__client_sock = connect_to_port(HTTP_PORT);
+	__client_sock = util_connect_to_port(HTTP_PORT);
 
 	__client_bufev = bufevent_new(__client_sock, client_readcb, NULL, client_errorcb, (void *)CB_ARG_VALUE);
 	fail_unless(__client_bufev != NULL, "bufevent_new");
@@ -330,6 +183,21 @@ static void teardown()
 	clean_client_side();
 }
 
+static void reinit_server_with_null_cbs()
+{
+	ws_json_rpc_free(__server_wj);
+
+	evhttp_del_cb(__eh, WS_URI);
+
+	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
+	fail_unless(__ws_conn != NULL, "ws_new failed");
+
+	evhttp_set_ws(__eh, WS_URI, __ws_conn);
+
+	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, NULL, NULL, (void *)CB_ARG_VALUE);
+	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
+}
+
 static void loop_exit()
 {
 	event_loopexit(NULL);
@@ -340,21 +208,9 @@ static void send_handshake_client()
 	util_send_handshake(__client_bufev, WS_URI, HTTP_HOST, HTTP_PORT);
 }
 
-//static void send_closing_frame_server()
-//{
-//	ws_send_close(__ws_conn);
-//}
-void util_send_ws_closing_frame(struct bufevent *bufev)
+static void send_closing_frame_server()
 {
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add(buf, "\xff", 1);
-
-	evbuffer_add(buf, "\x00", 1);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
+	ws_send_close(__ws_conn);
 }
 
 static void send_closing_frame_client()
@@ -473,6 +329,11 @@ static void test_incorrect_response_client()
 	test_response_client(INCORRECT_RESPONSE);
 }
 
+static void test_ws_error_server()
+{
+	fail_unless(__what == WS_CLOSING_FRAME, "incorrect error reason");
+}
+
 static void add_jrpc_method(struct json_rpc *jr)
 {
 	json_rpc_add_method(jr, "test1", test_cb, NULL);
@@ -488,22 +349,59 @@ static void add_jrpc_method_client()
 	add_jrpc_method(__client_jr);
 }
 
-static void reinit_server_with_null_cbs()
+START_TEST(test_success_0)
 {
-	ws_json_rpc_free(__server_wj);
+	add_command(add_jrpc_method_server);
+	add_command(send_handshake_client);
+	add_command(NULL);
+	add_command(send_correct_request_client);
+	add_command(NULL);
+	add_command(test_correct_request_server);
+	add_command(send_correct_response_server);
+	add_command(NULL);
+	add_command(test_correct_response_client);
+	add_command(loop_exit);
 
-	evhttp_del_cb(__eh, WS_URI);
-
-	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__ws_conn != NULL, "ws_new failed");
-
-	evhttp_set_ws(__eh, WS_URI, __ws_conn);
-
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, NULL, NULL, (void *)CB_ARG_VALUE);
-	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
+	start_process_commands();
 }
+END_TEST
 
-static void test()
+START_TEST(test_success_1)
+{
+	add_command(add_jrpc_method_client);
+	add_command(send_handshake_client);
+	add_command(NULL);
+	add_command(send_incorrect_request_client);
+	add_command(NULL);
+	add_command(test_incorrect_response_client);
+	add_command(send_correct_request_server);
+	add_command(NULL);
+	add_command(handle_request_client);
+	add_command(NULL);
+	add_command(test_correct_request_client);
+	add_command(send_correct_response_client);
+	add_command(NULL);
+	add_command(test_correct_response_server);
+	add_command(loop_exit);
+
+	start_process_commands();
+}
+END_TEST
+
+START_TEST(test_error_0)
+{
+	add_command(send_handshake_client);
+	add_command(NULL);
+	add_command(send_closing_frame_client);
+	add_command(NULL);
+	add_command(test_ws_error_server);
+	add_command(loop_exit);
+
+	start_process_commands();
+}
+END_TEST
+
+START_TEST(test_error_1)
 {
 	add_command(reinit_server_with_null_cbs);
 	add_command(add_jrpc_method_client);
@@ -520,16 +418,17 @@ static void test()
 
 	start_process_commands();
 }
+END_TEST
 
-
-int main()
+TCase *json_rpc_over_web_sockets_tcase()
 {
+	TCase *tc = tcase_create ("json_rpc_over_web_sockets");
+	tcase_add_checked_fixture(tc, setup, teardown);
+	tcase_add_test (tc, test_success_0);
+	tcase_add_test (tc, test_success_1);
 
-	setup();
-	test();
-	teardown();
+	tcase_add_test (tc, test_error_0);
+	tcase_add_test (tc, test_error_1);
 
-	return 0;
+	return tc;
 }
-
-//	eh = evhttps_start("127.0.0.1", 8888, "serv.pem", "serv.pem", "1234");
