@@ -59,6 +59,31 @@ START_TEST (test_valid_3)
 }
 END_TEST
 
+START_TEST (test_valid_4_utf)
+{
+	char *s = "[\"Элементы\", 5, \"массива\"]";
+    struct json_object *j_ar = json_parser_parse(s);
+
+    fail_unless(json_type(j_ar) == json_type_array, "bad type");
+    fail_unless(json_array_length(j_ar) == 3, "bad length");
+
+    struct json_object *j_str_1 = json_array_get(j_ar, 0);
+    struct json_object *j_int = json_array_get(j_ar, 1);
+    struct json_object *j_str_2 = json_array_get(j_ar, 2);
+
+    fail_unless(json_type(j_str_1) == json_type_string, "bad type");
+    fail_unless(json_type(j_str_2) == json_type_string, "bad type");
+    fail_unless(json_type(j_int) == json_type_int, "bad type");
+
+    fail_unless(json_int_get(j_int) == 5, "bad value_int");
+    fail_unless(strcmp(json_string_get(j_str_1), "Элементы") == 0, "bad value_str_1");
+    fail_unless(strcmp(json_string_get(j_str_2), "массива") == 0, "bad value_str_2");
+
+    json_ref_put(j_ar);
+}
+END_TEST
+
+
 static void check_as_invalid(char *s)
 {
 	struct json_object *j_int = json_parser_parse(s);
@@ -89,6 +114,7 @@ TCase *json_parser_parse_tcase(void)
 	tcase_add_test (tc, test_valid);
 	tcase_add_test (tc, test_valid_2);
 	tcase_add_test (tc, test_valid_3);
+	tcase_add_test (tc, test_valid_4_utf);
 
 	tcase_add_test (tc, test_invalid);
 	

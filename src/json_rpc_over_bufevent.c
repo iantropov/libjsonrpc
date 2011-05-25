@@ -14,7 +14,6 @@ struct bufevent_jrpc {
 	struct json_parser *jp;
 	struct bufevent *bufev;
 
-	json_rpc_result response_cb;
 	everrcb bufev_err_cb;
 	void *cb_arg;
 };
@@ -34,13 +33,17 @@ static void bufevent_errorcb(struct bufevent *bufev, short what, void *arg)
 	bj->bufev_err_cb(bufev, what, bj->cb_arg);
 }
 
-static void send_json(struct bufevent *bufev, struct json_object *obj)
+static int send_json(struct bufevent *bufev, struct json_object *obj)
 {
 	char *json_str = json_to_string(obj);
 
-	bufevent_write(bufev, json_str, strlen(json_str));
+	int ret = bufevent_write(bufev, json_str, strlen(json_str));
+	if (ret == -1)
+		log_info("%s : bufevent_write_failed", __func__);
 
 	free(json_str);
+
+	return ret;
 }
 
 static void json_rpc_resultcb(struct json_rpc *jr, struct json_object *res, void *arg)
@@ -56,25 +59,14 @@ static void json_rpc_resultcb(struct json_rpc *jr, struct json_object *res, void
 	json_ref_put(res);
 }
 
-static int json_rpc_is_response(struct json_object *obj)
-{
-	if (json_type(obj) != json_type_object)
-		return 0;
-
-	if (json_object_get(obj, "result") == NULL && json_object_get(obj, "error") == NULL)
-		return 0;
-
-	return 1;
-}
-
 static void json_objectcb(struct json_parser *jp, struct json_object *obj, void *arg)
 {
 	struct bufevent_jrpc *bj = (struct bufevent_jrpc *)arg;
 
 	if (json_rpc_is_response(obj))
-		bj->response_cb(bj->jr, obj, bj->cb_arg);
+		json_rpc_process_response(bj->jr, obj);
 	else
-		json_rpc_process(bj->jr, obj, json_rpc_resultcb, arg);
+		json_rpc_process_request(bj->jr, obj, json_rpc_resultcb, arg);
 }
 
 static void json_errorcb(struct json_parser *jp, short what, void *arg)
@@ -84,13 +76,16 @@ static void json_errorcb(struct json_parser *jp, short what, void *arg)
 	bufevent_write(tj->bufev, JSON_RPC_PARSE_ERROR, strlen(JSON_RPC_PARSE_ERROR));
 }
 
-void bufevent_json_rpc_send(struct bufevent_jrpc *bjrpc, struct json_object *obj)
+int bufevent_json_rpc_send(struct bufevent_jrpc *bjrpc, struct json_object *req, json_rpc_result res_cb, void *arg)
 {
-	send_json(bjrpc->bufev, obj);
+	if (json_rpc_preprocess_request(bjrpc->jr, req, res_cb, arg) == -1)
+		return -1;
+
+	return send_json(bjrpc->bufev, req);
 }
 
 struct bufevent_jrpc *bufevent_json_rpc_new(struct bufevent *bufev,
-		struct json_rpc *jr, everrcb bufev_err_cb, json_rpc_result response_cb, void *cb_arg)
+		struct json_rpc *jr, everrcb bufev_err_cb, void *cb_arg)
 {
 	struct bufevent_jrpc *bj = (struct bufevent_jrpc *)malloc(sizeof(struct bufevent_jrpc));
 	if (bj == NULL)
@@ -106,7 +101,6 @@ struct bufevent_jrpc *bufevent_json_rpc_new(struct bufevent *bufev,
 	bj->jr = jr;
 	bj->bufev = bufev;
 	bj->bufev_err_cb = bufev_err_cb;
-	bj->response_cb = response_cb;
 	bj->cb_arg = cb_arg;
 
 	bufevent_setcb(bufev, bufevent_readcb, NULL, bufevent_errorcb, bj);

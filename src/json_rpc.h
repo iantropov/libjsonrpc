@@ -39,8 +39,12 @@ void json_rpc_del_method(struct json_rpc *jr, char *name);
 
 void json_rpc_return(struct json_rpc_request *jr, struct json_object *res);
 
-void json_rpc_process(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg);
+void json_rpc_process_request(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg);
 
+int json_rpc_preprocess_request(struct json_rpc *jr, struct json_object *req, json_rpc_result res_cb, void *cb_arg);
+void json_rpc_process_response(struct json_rpc *jr, struct json_object *resp);
+
+int json_rpc_is_response(struct json_object *obj);
 
 void evhttp_set_json_rpc(struct evhttp *eh, char *uri, struct json_rpc *jr);
 
@@ -48,16 +52,17 @@ void evhttp_set_json_rpc(struct evhttp *eh, char *uri, struct json_rpc *jr);
 struct bufevent_jrpc;
 
 void bufevent_json_rpc_free(struct bufevent_jrpc *bj);
-void bufevent_json_rpc_send(struct bufevent_jrpc *bj, struct json_object *obj);
+int bufevent_json_rpc_send(struct bufevent_jrpc *bj, struct json_object *req,
+		json_rpc_result response_cb, void *cb_arg);
 struct bufevent_jrpc *bufevent_json_rpc_new(struct bufevent *bufev,
-		struct json_rpc *jr, everrcb bufev_err_cb, json_rpc_result response_cb, void *cb_arg);
+		struct json_rpc *jr, everrcb bufev_err_cb, void *cb_arg);
 
 
 struct ws_jrpc;
 
-int ws_json_rpc_send(struct ws_jrpc *wj, struct json_object *obj);
+int ws_json_rpc_send(struct ws_jrpc *wj, struct json_object *obj, json_rpc_result result_cb, void *arg);
 struct ws_jrpc *ws_json_rpc_new(struct ws_connection *conn,
-		struct json_rpc *jr, json_rpc_result result_cb, ws_error_cb error_cb, void *cb_arg);
+		struct json_rpc *jr, ws_error_cb error_cb, void *cb_arg);
 void ws_json_rpc_free(struct ws_jrpc *wj);
 
 #endif /* JSON_RPC_H_ */

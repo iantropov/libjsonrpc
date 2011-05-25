@@ -14,21 +14,9 @@ struct ws_jrpc {
 	struct json_rpc *jr;
 	struct ws_connection *conn;
 
-	json_rpc_result result_cb;
 	ws_error_cb error_cb;
 	void *cb_arg;
 };
-
-static int is_json_rpc_response(struct json_object *obj)
-{
-	if (json_type(obj) != json_type_object)
-		return 0;
-
-	if (json_object_get(obj, "result") == NULL && json_object_get(obj, "error") == NULL)
-		return 0;
-
-	return 1;
-}
 
 static void ws_errorcb(struct ws_connection *conn, short what, void *arg)
 {
@@ -49,9 +37,12 @@ static int send_json(struct ws_connection *conn, struct json_object *obj)
 	return ret;
 }
 
-int ws_json_rpc_send(struct ws_jrpc *wj, struct json_object *obj)
+int ws_json_rpc_send(struct ws_jrpc *wj, struct json_object *req, json_rpc_result result_cb, void *arg)
 {
-	return send_json(wj->conn, obj);
+	if (json_rpc_preprocess_request(wj->jr, req, result_cb, arg) == -1)
+		return -1;
+
+	return send_json(wj->conn, req);
 }
 
 static void jrpc_result(struct json_rpc *jr, struct json_object *obj, void *arg)
@@ -81,14 +72,14 @@ static void ws_messagecb(struct ws_connection *conn, u_char *mess, void *arg)
 		return;
 	}
 
-	if (!is_json_rpc_response(obj))
-		json_rpc_process(wj->jr, obj, jrpc_result, wj);
-	else if (wj->result_cb != NULL)
-		wj->result_cb(wj->jr, obj, wj->cb_arg);
+	if (json_rpc_is_response(obj))
+		json_rpc_process_response(wj->jr, obj);
+	else
+		json_rpc_process_request(wj->jr, obj, jrpc_result, wj);
 }
 
 struct ws_jrpc *ws_json_rpc_new(struct ws_connection *conn,
-		struct json_rpc *jr, json_rpc_result result_cb, ws_error_cb error_cb, void *cb_arg)
+		struct json_rpc *jr, ws_error_cb error_cb, void *cb_arg)
 {
 	struct ws_jrpc *wj = (struct ws_jrpc *)calloc(1, sizeof(struct ws_jrpc));
 	if (wj == NULL) {
@@ -98,7 +89,6 @@ struct ws_jrpc *ws_json_rpc_new(struct ws_connection *conn,
 
 	wj->jr = jr;
 	wj->conn = conn;
-	wj->result_cb = result_cb;
 	wj->error_cb = error_cb;
 	wj->cb_arg = cb_arg;
 

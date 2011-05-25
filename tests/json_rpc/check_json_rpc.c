@@ -4,6 +4,7 @@
 #include "check_json_rpc_over_http.h"
 #include "check_json_rpc_over_bufevent.h"
 #include "check_json_rpc_over_web_sockets.h"
+#include "check_json_rpc_response.h"
 
 Suite *make_json_rpc_suite (void)
 {
@@ -14,6 +15,7 @@ Suite *make_json_rpc_suite (void)
 	suite_add_tcase(s, json_rpc_over_http_tcase());
 	suite_add_tcase(s, json_rpc_over_bufevent_tcase());
 	suite_add_tcase(s, json_rpc_over_web_sockets_tcase());
+	suite_add_tcase(s, json_rpc_response_tcase());
 
 	return s;
 }

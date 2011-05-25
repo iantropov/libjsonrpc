@@ -91,7 +91,7 @@ START_TEST (test_single_success_1)
 
 	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 1;
 }
@@ -105,7 +105,7 @@ START_TEST (test_single_success_2)
 
 	fail_unless(json_rpc_add_method(jr, "test_2", test_2, NULL) == 0, "add");
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 1;
 }
@@ -117,7 +117,7 @@ START_TEST (test_single_error_1)
 
 	origin = create_single_error_response(create_error(ERROR_METHOD_NOT_FOUND_MESSAGE, ERROR_METHOD_NOT_FOUND_CODE), json_string_new("id"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -130,7 +130,7 @@ START_TEST (test_single_error_2)
 
 	origin = create_single_error_response(create_error(ERROR_INVALID_REQUEST_MESSAGE, ERROR_INVALID_REQUEST_CODE), json_null_new());
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -140,7 +140,7 @@ START_TEST (test_single_error_3)
 
 	origin = create_single_error_response(create_error(ERROR_INVALID_REQUEST_MESSAGE, ERROR_INVALID_REQUEST_CODE), json_null_new());
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -155,7 +155,7 @@ START_TEST (test_batched_success_1)
 	origin = create_batched_response(	json_parser_parse("[{\"success\":[2]}]"),
 										json_parser_parse("[1]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 1;
 }
@@ -173,7 +173,7 @@ START_TEST (test_batched_success_2)
 	origin = create_batched_response(	json_parser_parse("[{\"success\":[2]}, {\"success\":{\"c\":2, \"d\":null}}]"),
 										json_parser_parse("[1, 8]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 2;
 }
@@ -191,7 +191,7 @@ START_TEST (test_batched_error_1)
 	fail_unless(json_array_add(array, object) == 0, "add");
 	origin = create_batched_response(array, json_parser_parse("[1]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -213,7 +213,7 @@ START_TEST (test_batched_error_2)
 
 	origin = create_batched_response(res_array, json_parser_parse("[1, 2]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 1;
 }
@@ -239,7 +239,7 @@ START_TEST (test_batched_error_3)
 
 	origin = create_batched_response(res_array, json_parser_parse("[1, 2, 3]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 2;
 }
@@ -252,7 +252,7 @@ START_TEST (test_batched_error_4)
 
 	origin = create_single_error_response(create_error(ERROR_INVALID_REQUEST_MESSAGE, ERROR_INVALID_REQUEST_CODE), json_null_new());
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -264,7 +264,7 @@ START_TEST (test_notification_1)
 
 	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
 
-	json_rpc_process(jr, call, test_notification, NULL);
+	json_rpc_process_request(jr, call, test_notification, NULL);
 
 	__waiting_call_count = 1;
 }
@@ -276,7 +276,7 @@ START_TEST (test_notification_2)
 
 	origin = NULL;
 
-	json_rpc_process(jr, call, test_notification, NULL);
+	json_rpc_process_request(jr, call, test_notification, NULL);
 }
 END_TEST
 
@@ -288,7 +288,7 @@ START_TEST (test_notification_3)
 
 	origin = create_single_error_response(create_error(ERROR_INVALID_REQUEST_MESSAGE, ERROR_INVALID_REQUEST_CODE), json_null_new());
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 }
 END_TEST
 
@@ -304,7 +304,7 @@ START_TEST (test_batched_notification_1)
 	origin = create_batched_response(	json_parser_parse("[{\"success\":[2]}, {\"success\":{\"c\":2, \"d\":null}}]"),
 										json_parser_parse("[1, \"cdcd\"]"));
 
-	json_rpc_process(jr, call, test_result, &origin);
+	json_rpc_process_request(jr, call, test_result, &origin);
 
 	__waiting_call_count = 3;
 }
@@ -321,7 +321,7 @@ START_TEST (test_batched_notification_2)
 
 	origin = NULL;
 
-	json_rpc_process(jr, call, test_notification, NULL);
+	json_rpc_process_request(jr, call, test_notification, NULL);
 
 	__waiting_call_count = 3;
 }
@@ -338,13 +338,13 @@ START_TEST (test_multiple_process)
 
 	origin = NULL;
 
-	json_rpc_process(jr, call, test_notification, NULL);
+	json_rpc_process_request(jr, call, test_notification, NULL);
 
 	call = create_batched_request(	json_parser_parse("[\"test_1\", \"test_2\", \"test_2\"]"),
 										json_parser_parse("[[2], {\"c\":2, \"d\":null}, {\"c\":2, \"d\":null}]"),
 										json_parser_parse("[null, null, null]"));
 
-	json_rpc_process(jr, call, test_notification, NULL);
+	json_rpc_process_request(jr, call, test_notification, NULL);
 
 	__waiting_call_count = 6;
 }

@@ -5,13 +5,18 @@
  *      Author: ant
  */
 
-#include "list.h"
-
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
-#include <event.h>
-#include <evhttp.h>
+#include <stdio.h>
+
+#include "json_rpc.h"
+#include "json_parser.h"
+
+static void fail_unless(int a, char *str)
+{
+	if (!a)
+		fprintf(stderr, "%s\n", str);
+}
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -21,103 +26,34 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "json.h"
-#include "json_rpc.h"
-#include "json_parser.h"
+#define CORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test1\", \"params\":[2], \"id\":2}"
+#define CORRECT_PARAMS "[2]"
+#define CORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"result\":[2], \"id\":2}"
+#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"meod\":\"test1\", \"params\":[2], \"id\":2}"
+#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32600, \"message\":\"Invalid request\"}, \"id\": null}"
 
-struct my_list {
-	int value;
-	unsigned long b;
-	struct list_head list;
-};
+static int __port;
 
-#define CHECK_INT 5
-#define CHECK_STR "cdcd"
+static struct bufevent *__server_bufev;
+static struct bufevent *__client_bufev;
 
-#define REQUEST_ID "id"
-#define REQUEST_PARAMS "params"
-#define REQUEST_METHOD "method"
-#define REQUEST_VERSION "jsonrpc"
+static struct json_rpc *__server_jr;
+static struct json_rpc *__client_jr;
+static struct json_rpc *__jr;
 
-#define RESPONSE_ERROR "error"
-#define RESPONSE_ERROR_MESSAGE "message"
-#define RESPONSE_ERROR_CODE "code"
-#define RESPONSE_RESULT "result"
+static int __accept_sock;
 
-#define JSON_RPC_VERSION "2.0"
+static struct json_object *__input_obj;
+static struct json_object *__output_obj;
 
-#define ERROR_INVALID_REQUEST_MESSAGE "Invalid request"
-#define ERROR_INVALID_REQUEST_CODE -32600
-#define ERROR_METHOD_NOT_FOUND_MESSAGE "Method not found"
-#define ERROR_METHOD_NOT_FOUND_CODE -32601
-#define ERROR_INTERNAL_MESSAGE "Internal error"
-#define ERROR_INTERNAL_CODE -32603
+static struct json_rpc_request *__jrpc_req;
 
-struct json_rpc *jr;
-struct json_object *origin, *call;
+static struct bufevent_jrpc *__client_bjrpc;
+static struct bufevent_jrpc *__server_bjrpc;
 
-static int __call_info;
-static int __call_count;
-
-static int __waiting_error;
-static int __waiting_call_count;
-static int __waiting_call_info;
-
-static void fail_unless(boolean b, char *s)
-{
-	if (!b)
-		printf("%s\n", s);
-}
-
-struct json_object *util_get_json_from_ws_frame(struct bufevent *bufev)
-{
-	struct evbuffer *buf = bufevent_get_input(bufev);
-
-	char *str = strndup(buf->buffer +1, buf->off - 2);
-
-	struct json_object *obj = json_parser_parse(str);
-
-	free(str);
-
-	return obj;
-}
-
-void util_send_ws_frame(struct bufevent *bufev, u_char *mess)
-{
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add(buf, "\x00", 1);
-
-	evbuffer_add(buf, mess, strlen((char *)mess));
-
-	evbuffer_add(buf, "\xff", 1);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
-}
-
-void util_send_handshake(struct bufevent *bufev, char *uri, char *host, int port)
-{
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add_printf(buf, "GET %s HTTP/1.1\r\n", uri);
-	evbuffer_add_printf(buf, "Upgrade: WebSocket\r\n");
-	evbuffer_add_printf(buf, "Connection: Upgrade\r\n");
-	evbuffer_add_printf(buf, "Host: %s:%d\r\n", host, port);
-	evbuffer_add_printf(buf, "Origin: null\r\n");
-
-	evbuffer_add_printf(buf, "Sec-WebSocket-Key1: 18x 6]8vM;54 *(5:  {   U1]8  z [  8\r\n");
-	evbuffer_add_printf(buf, "Sec-WebSocket-Key2: 1_ tx7X d  <  nw  334J702) 7]o}` 0\r\n");
-
-	evbuffer_add_printf(buf, "\r\n");
-
-	evbuffer_add(buf, "Tm[K T2u", 8);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
-}
+static void (*__commands[100])();
+static int __command_counter = 0;
+static short __what;
 
 static int get_random_port(int low, int high)
 {
@@ -148,49 +84,38 @@ static int connect_to_port(int port)
 	return sock;
 }
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+static int prepare_server_socket(int port)
+{
+	int sock_server = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock_server == -1) {
+		return -1;
+	}
+	struct sockaddr_in sin_server;
+	memset(&sin_server, '\0', sizeof(struct sockaddr_in));
+	sin_server.sin_family = AF_INET;
+	sin_server.sin_port = htons(port);/*FIXME*/
+	sin_server.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (bind(sock_server, (struct sockaddr *)&sin_server,
+							sizeof(struct sockaddr_in)) == -1) {
+		return -1;
+	}
+	if (listen(sock_server, 10) == -1) {
+		return -1;
+	}
+	if (fcntl(sock_server, F_SETFL, O_NONBLOCK) == -1) {
+		return -1;
+	}
+	return sock_server;
+}
 
-#include <event0/bufevent.h>
-#include <event.h>
+static int accept_connection(int server_sock)
+{
+	struct sockaddr_in sin_client;
+	int from_len = sizeof(sin_client);
+	int sock_client = accept(server_sock, (struct sockaddr *)&sin_client, (socklen_t *)&from_len);
 
-#include "json_rpc.h"
-#include "json_parser.h"
-
-#define CORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test1\", \"params\":[2], \"id\":2}"
-#define CORRECT_PARAMS "[2]"
-#define CORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"result\":[2], \"id\":2}"
-#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"meod\":\"test1\", \"params\":[2], \"id\":2}"
-#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32600, \"message\":\"Invalid request\"}, \"id\": null}"
-
-#define WS_URI "/"
-#define HTTP_PORT 7777
-#define HTTP_HOST "127.0.0.1"
-
-#define CB_ARG_VALUE 0xdffd
-#define MESSAGE "Hello"
-
-static struct evhttp *__eh;
-static struct bufevent *__client_bufev;
-static int __client_sock;
-static const struct timeval __tv = {0, 1};
-
-static void (*__commands[100])();
-static int __command_counter = 0;
-static int __waiting_command_counter;
-static u_char *__message;
-static short __what;
-static struct ws_connection *__ws_conn;
-
-static struct ws_jrpc *__server_wj;
-
-struct json_rpc_request *__jrpc_req;
-struct json_object *__input_obj;
-struct json_object *__output_obj;
-
-static struct json_rpc *__server_jr;
-static struct json_rpc *__client_jr;
+	return sock_client;
+}
 
 static int process_commands(void(**commands)(), int command_counter)
 {
@@ -203,18 +128,14 @@ static int process_commands(void(**commands)(), int command_counter)
 
 static void start_process_commands()
 {
+	__command_counter = 0;
 	__command_counter = process_commands(__commands, __command_counter);
 	event_dispatch();
 }
 
 static void add_command(void (*cb)())
 {
-	__commands[__waiting_command_counter++] = cb;
-}
-
-static void check_arg(void *arg)
-{
-	fail_unless(arg == (void *)CB_ARG_VALUE, "error cb_arg");
+	__commands[__command_counter++] = cb;
 }
 
 static void test_cb(struct json_rpc_request *req, struct json_object *obj, void *arg)
@@ -222,93 +143,63 @@ static void test_cb(struct json_rpc_request *req, struct json_object *obj, void 
 	__jrpc_req = req;
 	__input_obj = obj;
 
-	__command_counter = process_commands(__commands, __command_counter);
-}
-
-static void ws_errorcb(struct ws_connection *conn, short what, void *arg)
-{
-	check_arg(arg);
-
-	__what = what;
-	__ws_conn = conn;
-	__command_counter = process_commands(__commands, __command_counter);
-}
-
-static void client_readcb(struct bufevent *bufev, void *arg)
-{
-	check_arg(arg);
+//	fail_unless(7 == 8, "cdcd");
 
 	__command_counter = process_commands(__commands, __command_counter);
-
-	struct evbuffer *buf = bufevent_get_input(bufev);
-	evbuffer_drain(buf, buf->off);
 }
 
-static void client_errorcb(struct bufevent *bufev, short what, void *arg)
+static void result_cb(struct json_rpc *jr, struct json_object *obj, void *arg)
 {
-	check_arg(arg);
-
-	__what = what;
-	__command_counter = process_commands(__commands, __command_counter);
-}
-
-static void jrpc_result_cb_client(struct json_rpc *jr, struct json_object *obj, void *arg)
-{
-	char *str = json_to_string(obj);
-
-	util_send_ws_frame(__client_bufev, str);
-
-	free(str);
-	json_ref_put(obj);
-}
-
-static void jrpc_resultcb(struct json_rpc *jr, struct json_object *obj, void *arg)
-{
-	check_arg(arg);
-
 	__output_obj = obj;
+	__jr = jr;
+
+//	fail_unless(7 == 8, "cdcd");
+
 	__command_counter = process_commands(__commands, __command_counter);
 }
 
-static void prepare_server_side()
+static void client_error_cb(struct bufevent *bufev, short what, void *arg)
 {
-	__eh = evhttp_start(HTTP_HOST, HTTP_PORT);
+	__what = what;
+	__command_counter = process_commands(__commands, __command_counter);
+}
 
-	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__ws_conn != NULL, "ws_new failed");
-
-	__server_jr = json_rpc_new();
-	fail_unless(__server_jr != NULL, "json_rpc_new failed");
-
-	evhttp_set_ws(__eh, WS_URI, __ws_conn);
-
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, jrpc_resultcb, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
+static void server_error_cb(struct bufevent *bufev, short what, void *arg)
+{
+	__what = what;
+	__command_counter = process_commands(__commands, __command_counter);
 }
 
 static void clean_server_side()
 {
-	evhttp_free(__eh);
-	ws_json_rpc_free(__server_wj);
+	if (__server_bjrpc != NULL)
+		bufevent_json_rpc_free(__server_bjrpc);
 	json_rpc_free(__server_jr);
+}
+
+static void prepare_server_side()
+{
+	int server_sock = accept_connection(__accept_sock);
+	fail_unless(server_sock > 0, "accept_connection");
+	__server_bufev = bufevent_new(server_sock, NULL, NULL, NULL, NULL);
+	__server_jr = json_rpc_new();
+	__server_bjrpc = bufevent_json_rpc_new(__server_bufev, __server_jr, server_error_cb, NULL);
+	bufevent_enable(__server_bufev, EV_READ);
 }
 
 static void prepare_client_side()
 {
+	int client_sock = connect_to_port(__port);
+	fail_unless(client_sock > 0, "connect_to_port");
+	__client_bufev = bufevent_new(client_sock, NULL, NULL, NULL, NULL);
 	__client_jr = json_rpc_new();
-	fail_unless(__client_jr != NULL, "json_rpc_new failed");
-
-	__client_sock = connect_to_port(HTTP_PORT);
-
-	__client_bufev = bufevent_new(__client_sock, client_readcb, NULL, client_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__client_bufev != NULL, "bufevent_new");
+	__client_bjrpc = bufevent_json_rpc_new(__client_bufev, __client_jr, client_error_cb, NULL);
 	bufevent_enable(__client_bufev, EV_READ);
 }
 
 static void clean_client_side()
 {
-	bufevent_free(__client_bufev);
-	close(__client_sock);
+	bufevent_json_rpc_free(__client_bjrpc);
 	json_rpc_free(__client_jr);
 }
 
@@ -316,83 +207,64 @@ static void setup()
 {
 	event_init();
 
-	__waiting_command_counter = __command_counter = 0;
-
-	prepare_server_side();
+	__port = get_random_port(7000, 10000);
+	__accept_sock = prepare_server_socket(__port);
+	fail_unless(__accept_sock > 0, "prepare_server_socket");
 	prepare_client_side();
+	prepare_server_side();
 }
 
 static void teardown()
 {
-	fail_unless(__waiting_command_counter  + 1 == __command_counter, "Not all cbs are executed");
-
 	clean_server_side();
 	clean_client_side();
+
+	close(__accept_sock);
+
+	sleep(1);
 }
 
 static void loop_exit()
 {
-	event_loopexit(NULL);
+	event_loopbreak();
 }
 
-static void send_handshake_client()
-{
-	util_send_handshake(__client_bufev, WS_URI, HTTP_HOST, HTTP_PORT);
-}
-
-//static void send_closing_frame_server()
-//{
-//	ws_send_close(__ws_conn);
-//}
-void util_send_ws_closing_frame(struct bufevent *bufev)
-{
-	struct evbuffer *buf = evbuffer_new();
-
-	evbuffer_add(buf, "\xff", 1);
-
-	evbuffer_add(buf, "\x00", 1);
-
-	bufevent_write_buffer(bufev, buf);
-
-	evbuffer_free(buf);
-}
-
-static void send_closing_frame_client()
-{
-	util_send_ws_closing_frame(__client_bufev);
-}
-
-static void send_correct_request(struct ws_jrpc *wj)
+static void send_correct_request(struct bufevent_jrpc *bj)
 {
 	struct json_object *obj = json_parser_parse(CORRECT_REQUEST);
 	fail_unless(obj != NULL, "json_parser_parse");
 
-	ws_json_rpc_send(wj, obj);
+	bufevent_json_rpc_send(bj, obj, result_cb, NULL);
 
 	json_ref_put(obj);
 }
 
 static void send_correct_request_server()
 {
-	send_correct_request(__server_wj);
+	send_correct_request(__server_bjrpc);
 }
 
 static void send_correct_request_client()
 {
-	util_send_ws_frame(__client_bufev, (u_char *)CORRECT_REQUEST);
+	send_correct_request(__client_bjrpc);
 }
 
-static void send_incorrect_request_client()
+static void send_incorrect_request(struct bufevent *bufev)
 {
-	util_send_ws_frame(__client_bufev, (u_char *)INCORRECT_REQUEST);
+	bufevent_write(bufev, INCORRECT_REQUEST, strlen(INCORRECT_REQUEST));
 }
 
 static void send_incorrect_request_server()
 {
-	ws_send_message(__ws_conn, INCORRECT_REQUEST);
+	send_incorrect_request(__server_bufev);
 }
 
-static void test_correct_request_server()
+static void send_incorrect_request_client()
+{
+	send_incorrect_request(__client_bufev);
+}
+
+static void test_correct_request()
 {
 	fail_unless(__jrpc_req != NULL, "incorrect json_rpc_request");
 
@@ -405,17 +277,7 @@ static void test_correct_request_server()
 	json_ref_put(__input_obj);
 }
 
-static void test_correct_request_client()
-{
-	test_correct_request_server();
-}
-
-static void handle_request_client()
-{
-	json_rpc_process(__client_jr, util_get_json_from_ws_frame(__client_bufev), jrpc_result_cb_client, NULL);
-}
-
-static void send_correct_response_server()
+static void send_correct_response()
 {
 	struct json_object *obj = json_parser_parse(CORRECT_PARAMS);
 	fail_unless(obj != NULL, "parser parse");
@@ -423,12 +285,7 @@ static void send_correct_response_server()
 	json_rpc_return(__jrpc_req, obj);
 }
 
-static void send_correct_response_client()
-{
-	send_correct_response_server();
-}
-
-static void test_response_server(char *response)
+static void test_response(char *response)
 {
 	struct json_object *obj = json_parser_parse(response);
 	fail_unless(obj != NULL, "parser parse");
@@ -439,38 +296,14 @@ static void test_response_server(char *response)
 	json_ref_put(__output_obj);
 }
 
-static void test_correct_response_server()
+static void test_correct_response()
 {
-	test_response_server(CORRECT_RESPONSE);
+	test_response(CORRECT_RESPONSE);
 }
 
-static void test_incorrect_response_server()
+static void test_incorrect_response()
 {
-	test_response_server(INCORRECT_RESPONSE);
-}
-
-static void test_response_client(char *response)
-{
-	struct json_object *obj_exp = json_parser_parse(response);
-	fail_unless(obj_exp != NULL, "parser parse");
-
-	struct json_object *obj_was = util_get_json_from_ws_frame(__client_bufev);
-	fail_unless(obj_was != NULL, "parser parse");
-
-	fail_unless(json_equals(obj_exp, obj_was) == 0, "incorrect response");
-
-	json_ref_put(obj_exp);
-	json_ref_put(obj_was);
-}
-
-static void test_correct_response_client()
-{
-	test_response_client(CORRECT_RESPONSE);
-}
-
-static void test_incorrect_response_client()
-{
-	test_response_client(INCORRECT_RESPONSE);
+	test_response(INCORRECT_RESPONSE);
 }
 
 static void add_jrpc_method(struct json_rpc *jr)
@@ -488,43 +321,35 @@ static void add_jrpc_method_client()
 	add_jrpc_method(__client_jr);
 }
 
-static void reinit_server_with_null_cbs()
+static void close_socket_server()
 {
-	ws_json_rpc_free(__server_wj);
-
-	evhttp_del_cb(__eh, WS_URI);
-
-	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__ws_conn != NULL, "ws_new failed");
-
-	evhttp_set_ws(__eh, WS_URI, __ws_conn);
-
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, NULL, NULL, (void *)CB_ARG_VALUE);
-	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
+	bufevent_json_rpc_free(__server_bjrpc);
+	__server_bjrpc = NULL;
 }
 
-static void test()
+static void test_bufevent_error()
 {
-	add_command(reinit_server_with_null_cbs);
-	add_command(add_jrpc_method_client);
-	add_command(send_handshake_client);
+	fail_unless((__what & EVBUFFER_EOF) != 0, "bufevent error reason");
+}
+
+void test()
+{
+	add_command(add_jrpc_method_server);
+	add_command(send_incorrect_request_client);
+//	add_command(test_incorrect_response);
+	add_command(send_correct_request_client);
 	add_command(NULL);
-	add_command(send_correct_request_server);
+	add_command(test_correct_request);
+	add_command(send_correct_response);
 	add_command(NULL);
-	add_command(handle_request_client);
-	add_command(NULL);
-	add_command(test_correct_request_client);
-	add_command(send_correct_response_client);
-	add_command(send_closing_frame_client);
+	add_command(test_correct_response);
 	add_command(loop_exit);
 
 	start_process_commands();
 }
 
-
 int main()
 {
-
 	setup();
 	test();
 	teardown();

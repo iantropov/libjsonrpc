@@ -20,8 +20,8 @@
 #define CORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test1\", \"params\":[2], \"id\":2}"
 #define CORRECT_PARAMS "[2]"
 #define CORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"result\":[2], \"id\":2}"
-#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"meod\":\"test1\", \"params\":[2], \"id\":2}"
-#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32600, \"message\":\"Invalid request\"}, \"id\": null}"
+#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test8\", \"params\":[2], \"id\":2}"
+#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32601, \"message\":\"Method not found\"}, \"id\": 2}"
 
 static int __port;
 
@@ -44,6 +44,7 @@ static struct bufevent_jrpc *__server_bjrpc;
 
 static void (*__commands[100])();
 static int __command_counter = 0;
+static int __waiting_command_counter;
 static short __what;
 
 static int get_random_port(int low, int high)
@@ -126,7 +127,7 @@ static void start_process_commands()
 
 static void add_command(void (*cb)())
 {
-	__commands[__command_counter++] = cb;
+	__commands[__waiting_command_counter++] = cb;
 }
 
 static void test_cb(struct json_rpc_request *req, struct json_object *obj, void *arg)
@@ -174,7 +175,7 @@ static void prepare_server_side()
 	fail_unless(server_sock > 0, "accept_connection");
 	__server_bufev = bufevent_new(server_sock, NULL, NULL, NULL, NULL);
 	__server_jr = json_rpc_new();
-	__server_bjrpc = bufevent_json_rpc_new(__server_bufev, __server_jr, server_error_cb, result_cb, NULL);
+	__server_bjrpc = bufevent_json_rpc_new(__server_bufev, __server_jr, server_error_cb, NULL);
 	bufevent_enable(__server_bufev, EV_READ);
 }
 
@@ -184,7 +185,7 @@ static void prepare_client_side()
 	fail_unless(client_sock > 0, "connect_to_port");
 	__client_bufev = bufevent_new(client_sock, NULL, NULL, NULL, NULL);
 	__client_jr = json_rpc_new();
-	__client_bjrpc = bufevent_json_rpc_new(__client_bufev, __client_jr, client_error_cb, result_cb, NULL);
+	__client_bjrpc = bufevent_json_rpc_new(__client_bufev, __client_jr, client_error_cb, NULL);
 	bufevent_enable(__client_bufev, EV_READ);
 }
 
@@ -198,6 +199,8 @@ static void setup()
 {
 	event_init();
 
+	__waiting_command_counter = __command_counter = 0;
+
 	__port = get_random_port(7000, 10000);
 	__accept_sock = prepare_server_socket(__port);
 	fail_unless(__accept_sock > 0, "prepare_server_socket");
@@ -207,6 +210,8 @@ static void setup()
 
 static void teardown()
 {
+	fail_unless(__waiting_command_counter  + 1 == __command_counter, "Not all cbs are executed");
+
 	clean_server_side();
 	clean_client_side();
 
@@ -220,39 +225,39 @@ static void loop_exit()
 	event_loopbreak();
 }
 
-static void send_correct_request(struct bufevent_jrpc *bj)
+static void send_json(struct bufevent_jrpc *bj, char *str)
 {
-	struct json_object *obj = json_parser_parse(CORRECT_REQUEST);
+	struct json_object *obj = json_parser_parse(str);
 	fail_unless(obj != NULL, "json_parser_parse");
 
-	bufevent_json_rpc_send(bj, obj);
+	bufevent_json_rpc_send(bj, obj, result_cb, NULL);
 
 	json_ref_put(obj);
 }
 
 static void send_correct_request_server()
 {
-	send_correct_request(__server_bjrpc);
+	send_json(__server_bjrpc, CORRECT_REQUEST);
 }
 
 static void send_correct_request_client()
 {
-	send_correct_request(__client_bjrpc);
+	send_json(__client_bjrpc, CORRECT_REQUEST);
 }
 
 static void send_incorrect_request(struct bufevent *bufev)
 {
-	bufevent_write(bufev, INCORRECT_REQUEST, strlen(INCORRECT_REQUEST));
+//	send_json(bufev, INCORRECT_REQUEST, strlen(INCORRECT_REQUEST));
 }
 
 static void send_incorrect_request_server()
 {
-	send_incorrect_request(__server_bufev);
+	send_json(__server_bjrpc, INCORRECT_REQUEST);
 }
 
 static void send_incorrect_request_client()
 {
-	send_incorrect_request(__client_bufev);
+	send_json(__client_bjrpc, INCORRECT_REQUEST);
 }
 
 static void test_correct_request()

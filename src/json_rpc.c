@@ -16,6 +16,7 @@
 
 struct json_rpc {
 	struct list_head methods;
+	struct list_head result_cbs;
 };
 
 struct json_rpc_request {
@@ -43,6 +44,14 @@ struct json_rpc_list_entry {
 	void *method_arg;
 };
 
+struct json_rpc_result_entry {
+	struct list_head list;
+
+	struct json_object *id;
+	json_rpc_result result_cb;
+	void *result_arg;
+};
+
 struct deferred_call_data {
 	json_rpc_method method;
 	struct json_object *obj;
@@ -51,17 +60,18 @@ struct deferred_call_data {
 	void *method_arg;
 };
 
-#define REQUEST_ID "id"
+#define JSON_RPC_ID_KEY "id"
+#define JSON_RPC_VERSION_KEY "jsonrpc"
+
+#define JSON_RPC_VERSION "2.0"
+
 #define REQUEST_PARAMS "params"
 #define REQUEST_METHOD "method"
-#define REQUEST_VERSION "jsonrpc"
 
 #define RESPONSE_ERROR "error"
 #define RESPONSE_ERROR_MESSAGE "message"
 #define RESPONSE_ERROR_CODE "code"
 #define RESPONSE_RESULT "result"
-
-#define JSON_RPC_VERSION "2.0"
 
 #define ERROR_INVALID_REQUEST "Invalid request"
 #define ERROR_INVALID_REQUEST_CODE -32600
@@ -79,6 +89,8 @@ static struct json_object *create_error_object(char *message, int code);
 static struct json_object *prepare_error_response(char *error_message, int error_code, struct json_object *id);
 static struct json_rpc_list_entry *lookup_entry(struct json_rpc *jr, char *name);
 static enum call_type eval_call_type(struct json_object *obj);
+static int is_response_single(struct json_object *resp);
+static struct json_object *get_id(struct json_object *obj);
 
 struct json_rpc *json_rpc_new()
 {
@@ -87,6 +99,7 @@ struct json_rpc *json_rpc_new()
 		return NULL;
 
 	INIT_LIST_HEAD(&jr->methods);
+	INIT_LIST_HEAD(&jr->result_cbs);
 
 	return jr;
 }
@@ -97,12 +110,20 @@ void json_rpc_free(struct json_rpc *jr)
 		return;
 
 	struct list_head *p, *n;
-	struct json_rpc_list_entry *entry;
+	struct json_rpc_list_entry *list_entry;
 	list_for_each_safe(p, n, &jr->methods) {
-		entry = list_entry(p, struct json_rpc_list_entry, list);
-		free(entry->method_name);
+		list_entry = list_entry(p, struct json_rpc_list_entry, list);
+		free(list_entry->method_name);
 		list_del(p);
-		free(entry);
+		free(list_entry);
+	}
+
+	struct json_rpc_result_entry *res_entry;
+	list_for_each_safe(p, n, &jr->result_cbs) {
+		res_entry = list_entry(p, struct json_rpc_result_entry, list);
+		json_ref_put(res_entry->id);
+		list_del(p);
+		free(res_entry);
 	}
 
 	free(jr);
@@ -207,7 +228,7 @@ static void dispatch_notification_call(struct json_rpc_request *req, struct json
 
 static void dispatch_request_call(struct json_rpc_request *req, struct json_object *obj)
 {
-	req->method_id = json_ref_get(json_object_get(obj, REQUEST_ID));
+	req->method_id = json_ref_get(json_object_get(obj, JSON_RPC_ID_KEY));
 
 	struct json_rpc_list_entry *entry = lookup_entry(req->jr, json_string_get(json_object_get(obj, REQUEST_METHOD)));
 	if (entry == NULL)
@@ -300,7 +321,7 @@ static int process_single_call(struct json_rpc *jr, struct json_object *obj, jso
 	return 0;
 }
 
-void json_rpc_process(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg)
+void json_rpc_process_request(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg)
 {
 	int ret;
 	if (json_type(obj) == json_type_object)
@@ -331,6 +352,80 @@ void json_rpc_return(struct json_rpc_request *req, struct json_object *res)
 	add_method_to_queue(req->return_cb, req, json_rpc_res, req->cb_arg);
 }
 
+int json_rpc_preprocess_request(struct json_rpc *jr, struct json_object *req, json_rpc_result result, void *arg)
+{
+	struct json_object *id = get_id(req);
+	if (id == NULL) {
+		log_info("%s : can`t get ids from request", __func__);
+		return -1;
+	}
+
+	struct json_rpc_result_entry *entry = (struct json_rpc_result_entry *)
+			malloc(sizeof(struct json_rpc_result_entry));
+	if (entry == NULL) {
+		log_info("%s : malloc_failed", __func__);
+		return -1;
+	}
+
+	entry->result_cb = result;
+	entry->result_arg = arg;
+	entry->id = id;
+
+	list_add(&entry->list, &jr->result_cbs);
+
+	return 0;
+}
+
+void json_rpc_process_response(struct json_rpc *jr, struct json_object *resp)
+{
+	if (!json_rpc_is_response(resp)) {
+		log_info("%s : passed JSON isn`t JSON-RPC response", __func__);
+		return;
+	}
+
+	struct json_object *id = get_id(resp);
+	if (id == NULL)
+		return;
+
+	struct json_rpc_result_entry *pos, *res = NULL;
+	list_for_each_entry(pos, &jr->result_cbs, list) {
+		if (json_equals(pos->id, id) == 0) {
+			res = pos;
+			break;
+		}
+	}
+
+	if (res == NULL) {
+		json_ref_put(id);
+		json_ref_put(resp);
+		return;
+	}
+
+	list_del(&pos->list);
+
+	pos->result_cb(jr, resp, pos->result_arg);
+
+	json_ref_put(id);
+
+	json_ref_put(pos->id);
+	free(pos);
+}
+
+int json_rpc_is_response(struct json_object *resp)
+{
+	enum json_type type = json_type(resp);
+	if (type == json_type_object)
+		return is_response_single(resp);
+	else if (type != json_type_array)
+		return 0;
+
+	int i, len;
+	for (i = 0, len = json_array_length(resp); i < len; ++i)
+		if (!is_response_single(json_array_get(resp, i)))
+			return 0;
+
+	return 1;
+}
 
 static struct json_rpc_request *create_request(struct json_rpc *jr,
 		json_rpc_method res_cb, json_rpc_result user_cb, void *cb_arg)
@@ -364,7 +459,7 @@ static struct json_object *prepare_response_object(struct json_object *id, struc
 	if (j_ver == NULL)
 		goto error;
 
-	int ret = json_object_add(j_res, REQUEST_VERSION, j_ver);
+	int ret = json_object_add(j_res, JSON_RPC_VERSION_KEY, j_ver);
 	if (ret == -1)
 		goto error;
 
@@ -372,7 +467,7 @@ static struct json_object *prepare_response_object(struct json_object *id, struc
 	if (ret == -1)
 		goto error;
 
-	ret = json_object_add(j_res, REQUEST_ID, id);
+	ret = json_object_add(j_res, JSON_RPC_ID_KEY, id);
 	if (ret == -1)
 		goto error;
 
@@ -418,7 +513,7 @@ static struct json_object *prepare_error_response(char *error_message, int error
 	if (j_ver == NULL)
 		goto error;
 
-	int ret = json_object_add(j_err, REQUEST_VERSION, j_ver);
+	int ret = json_object_add(j_err, JSON_RPC_VERSION_KEY, j_ver);
 	if (ret == -1)
 		goto error;
 
@@ -426,7 +521,7 @@ static struct json_object *prepare_error_response(char *error_message, int error
 	if (ret == -1)
 		goto error;
 
-	ret = json_object_add(j_err, REQUEST_ID, id);
+	ret = json_object_add(j_err, JSON_RPC_ID_KEY, id);
 	if (ret == -1) {
 		json_ref_put(j_err);
 		return NULL;
@@ -454,6 +549,78 @@ static struct json_rpc_list_entry *lookup_entry(struct json_rpc *jr, char *name)
 	return NULL;
 }
 
+static struct json_object *get_id(struct json_object *req)
+{
+	enum json_type type = json_type(req);
+	if (type == json_type_object)
+		return json_ref_get(json_object_get(req, JSON_RPC_ID_KEY));
+	else if (type != json_type_array)
+		return NULL;
+
+	struct json_object *ids = json_array_new();
+	if (ids == NULL) {
+		log_info("%s : can`t create array for id", __func__);
+		return NULL;
+	}
+
+	int i, len;
+	struct json_object *id;
+	for (i = 0, len = json_array_length(req); i < len; ++i) {
+		id = json_object_get(json_array_get(req, i), JSON_RPC_ID_KEY);
+		if (id != NULL)
+			json_array_add(ids, json_ref_get(id));
+	}
+
+	if (json_array_length(ids) == 0) {
+		json_ref_put(ids);
+		return NULL;
+	}
+
+	return ids;
+}
+
+static int is_response_single(struct json_object *resp)
+{
+	if (json_type(resp) != json_type_object)
+		return 0;
+
+	struct json_object *j_var, *j_err;
+	enum json_type type;
+
+	j_var = json_object_get(resp, JSON_RPC_VERSION_KEY);
+	type = json_type(j_var);
+	if (j_var == NULL || type != json_type_string || strcmp(JSON_RPC_VERSION, json_string_get(j_var)))
+		return 0;
+
+	j_var = json_object_get(resp, JSON_RPC_ID_KEY);
+	type = json_type(j_var);
+	if (j_var != NULL && 	type != json_type_string && type != json_type_int &&
+							type != json_type_boolean && type != json_type_null)
+		return 0;
+
+	j_var = json_object_get(resp, RESPONSE_RESULT);
+	type = json_type(j_var);
+	if (j_var != NULL)
+		return 1;
+
+	j_err = json_object_get(resp, RESPONSE_ERROR);
+	type = json_type(j_err);
+	if (j_err == NULL || type != json_type_object)
+		return 0;
+
+	j_var = json_object_get(j_err, RESPONSE_ERROR_MESSAGE);
+	type = json_type(j_var);
+	if (j_var == NULL || (j_var != NULL && type != json_type_string))
+		return 0;
+
+	j_var = json_object_get(j_err, RESPONSE_ERROR_CODE);
+	type = json_type(j_var);
+	if (j_var == NULL || (j_var != NULL && type != json_type_int))
+		return 0;
+
+	return 1;
+}
+
 static enum call_type eval_call_type(struct json_object *obj)
 {
 	if (json_type(obj) != json_type_object)
@@ -467,7 +634,7 @@ static enum call_type eval_call_type(struct json_object *obj)
 	if (j_var != NULL && type != json_type_object && type != json_type_array)
 		return invalid_call;
 
-	j_var = json_object_get(obj, REQUEST_VERSION);
+	j_var = json_object_get(obj, JSON_RPC_VERSION_KEY);
 	type = json_type(j_var);
 	if (j_var == NULL || type != json_type_string || strcmp(JSON_RPC_VERSION, json_string_get(j_var)))
 		return invalid_call;
@@ -477,7 +644,7 @@ static enum call_type eval_call_type(struct json_object *obj)
 	if (j_var == NULL || type != json_type_string)
 		return invalid_call;
 
-	j_var = json_object_get(obj, REQUEST_ID);
+	j_var = json_object_get(obj, JSON_RPC_ID_KEY);
 	type = json_type(j_var);
 	if (j_var != NULL && type != json_type_string && type != json_type_int)
 		return invalid_call;

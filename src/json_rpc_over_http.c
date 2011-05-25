@@ -112,7 +112,7 @@ static void json_rpc_call(struct evhttp_request *req, void *arg)
 	if (obj == NULL)
 		send_http_reply(req, HTTP_PARSE_ERROR_STATUS, HTTP_PARSE_ERROR_REASON, JSON_RPC_PARSE_ERROR);
 	else
-		json_rpc_process(jr, obj, jrpc_result, (void *)req);
+		json_rpc_process_request(jr, obj, jrpc_result, (void *)req);
 }
 
 void evhttp_set_json_rpc(struct evhttp *eh, char *uri, struct json_rpc *jr)

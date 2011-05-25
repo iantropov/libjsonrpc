@@ -14,8 +14,8 @@
 #define CORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test1\", \"params\":[2], \"id\":2}"
 #define CORRECT_PARAMS "[2]"
 #define CORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"result\":[2], \"id\":2}"
-#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"meod\":\"test1\", \"params\":[2], \"id\":2}"
-#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32600, \"message\":\"Invalid request\"}, \"id\": null}"
+#define INCORRECT_REQUEST "{\"jsonrpc\":\"2.0\", \"method\":\"test8\", \"params\":[2], \"id\":2}"
+#define INCORRECT_RESPONSE "{\"jsonrpc\":\"2.0\", \"error\":{\"code\":-32601, \"message\":\"Method not found\"}, \"id\": 2}"
 
 #define WS_URI "/"
 #define HTTP_PORT 7777
@@ -115,7 +115,7 @@ static void jrpc_result_cb_client(struct json_rpc *jr, struct json_object *obj, 
 	json_ref_put(obj);
 }
 
-static void jrpc_resultcb(struct json_rpc *jr, struct json_object *obj, void *arg)
+static void result_cb(struct json_rpc *jr, struct json_object *obj, void *arg)
 {
 	check_arg(arg);
 
@@ -135,7 +135,7 @@ static void prepare_server_side()
 
 	evhttp_set_ws(__eh, WS_URI, __ws_conn);
 
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, jrpc_resultcb, ws_errorcb, (void *)CB_ARG_VALUE);
+	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, ws_errorcb, (void *)CB_ARG_VALUE);
 	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
 }
 
@@ -183,21 +183,6 @@ static void teardown()
 	clean_client_side();
 }
 
-static void reinit_server_with_null_cbs()
-{
-	ws_json_rpc_free(__server_wj);
-
-	evhttp_del_cb(__eh, WS_URI);
-
-	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__ws_conn != NULL, "ws_new failed");
-
-	evhttp_set_ws(__eh, WS_URI, __ws_conn);
-
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, NULL, NULL, (void *)CB_ARG_VALUE);
-	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
-}
-
 static void loop_exit()
 {
 	event_loopexit(NULL);
@@ -218,19 +203,24 @@ static void send_closing_frame_client()
 	util_send_ws_closing_frame(__client_bufev);
 }
 
-static void send_correct_request(struct ws_jrpc *wj)
+static void send_request(struct ws_jrpc *wj, char *str)
 {
-	struct json_object *obj = json_parser_parse(CORRECT_REQUEST);
+	struct json_object *obj = json_parser_parse(str);
 	fail_unless(obj != NULL, "json_parser_parse");
 
-	ws_json_rpc_send(wj, obj);
+	ws_json_rpc_send(wj, obj, result_cb, (void *)CB_ARG_VALUE);
 
 	json_ref_put(obj);
 }
 
 static void send_correct_request_server()
 {
-	send_correct_request(__server_wj);
+	send_request(__server_wj, CORRECT_REQUEST);
+}
+
+static void send_incorrect_request_server()
+{
+	send_request(__server_wj, INCORRECT_REQUEST);
 }
 
 static void send_correct_request_client()
@@ -241,11 +231,6 @@ static void send_correct_request_client()
 static void send_incorrect_request_client()
 {
 	util_send_ws_frame(__client_bufev, (u_char *)INCORRECT_REQUEST);
-}
-
-static void send_incorrect_request_server()
-{
-	ws_send_message(__ws_conn, INCORRECT_REQUEST);
 }
 
 static void test_correct_request_server()
@@ -268,7 +253,7 @@ static void test_correct_request_client()
 
 static void handle_request_client()
 {
-	json_rpc_process(__client_jr, util_get_json_from_ws_frame(__client_bufev), jrpc_result_cb_client, NULL);
+	json_rpc_process_request(__client_jr, util_get_json_from_ws_frame(__client_bufev), jrpc_result_cb_client, NULL);
 }
 
 static void send_correct_response_server()
@@ -401,25 +386,6 @@ START_TEST(test_error_0)
 }
 END_TEST
 
-START_TEST(test_error_1)
-{
-	add_command(reinit_server_with_null_cbs);
-	add_command(add_jrpc_method_client);
-	add_command(send_handshake_client);
-	add_command(NULL);
-	add_command(send_correct_request_server);
-	add_command(NULL);
-	add_command(handle_request_client);
-	add_command(NULL);
-	add_command(test_correct_request_client);
-	add_command(send_correct_response_client);
-	add_command(send_closing_frame_client);
-	add_command(loop_exit);
-
-	start_process_commands();
-}
-END_TEST
-
 TCase *json_rpc_over_web_sockets_tcase()
 {
 	TCase *tc = tcase_create ("json_rpc_over_web_sockets");
@@ -428,7 +394,6 @@ TCase *json_rpc_over_web_sockets_tcase()
 	tcase_add_test (tc, test_success_1);
 
 	tcase_add_test (tc, test_error_0);
-	tcase_add_test (tc, test_error_1);
 
 	return tc;
 }

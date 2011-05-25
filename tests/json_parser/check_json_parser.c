@@ -11,11 +11,11 @@
 #define ARRAY_WITH_HALF "[2.15, 3][2."
 #define ARRAY_HALF "15, 3]"
 
-#define OBJECT "{\"key1\":123, \"key2\":false, \"key3\":\"1212\"}"
-#define OBJECT_PART_0 "{\"key1\":"
+#define OBJECT "{\"Ключ_1\":123, \"Ключ_2\":false, \"Ключ_3\":\"Ключ_1212\"}"
+#define OBJECT_PART_0 "{\"Ключ_1\":"
 #define OBJECT_PART_1 "123,"
-#define OBJECT_PART_2 "\"key2\":false"
-#define OBJECT_PART_3 ", \"key3\":\"1212\"}"
+#define OBJECT_PART_2 "\"Ключ_2\":false"
+#define OBJECT_PART_3 ", \"Ключ_3\":\"Ключ_1212\"}"
 
 
 static struct json_parser *__jp;

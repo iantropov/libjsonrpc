@@ -319,7 +319,7 @@ END_TEST
 TCase *json_rpc_over_http_tcase(void)
 {
 	/* Json object creation test case */
-	TCase *tc = tcase_create ("json_rpc_process");
+	TCase *tc = tcase_create ("json_rpc_over_http");
 	tcase_add_checked_fixture(tc, setup, teardown);
 
 	tcase_add_test (tc, test_single_success_1);
