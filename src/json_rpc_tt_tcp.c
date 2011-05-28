@@ -9,6 +9,8 @@
 #include "json_parser.h"
 #include "log.h"
 
+#include "json_rpc_tt_internal.h"
+
 struct jrpc_bufevent {
 	struct bufevent *bufev;
 	struct json_parser *jp;
@@ -31,12 +33,11 @@ static void bufevent_errorcb(struct bufevent *bufev, short what, void *arg)
 	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
 	struct jrpc_bufevent *jb = (struct jrpc_bufevent *)jt->impl;
 
-	jb->bufev_err_cb(jb->bufev, what, jb->cb_arg);
+	jb->err_cb(jb->bufev, what, jb->cb_arg);
 }
 
 static int tt_bufevent_write(struct json_rpc_tt *jt, struct json_object *obj)
 {
-	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
 	struct jrpc_bufevent *jb = (struct jrpc_bufevent *)jt->impl;
 
 	char *json_str = json_to_string(obj);
@@ -69,7 +70,7 @@ static void tt_bufevent_free(struct json_rpc_tt *jt)
 {
 	struct jrpc_bufevent *jb = (struct jrpc_bufevent *)jt->impl;
 
-	json_parser_destroy(jb->jp);
+	json_parser_free(jb->jp);
 	bufevent_free(jb->bufev);
 
 	free(jb);
@@ -82,7 +83,7 @@ struct json_rpc_tt *json_rpc_tt_tcp_new(struct json_rpc *jr, struct bufevent *bu
 	if (jt == NULL)
 		return NULL;
 
-	struct jrpc_bufevent *jb = (struct jrpc_bufevnt *)malloc(sizeof(struct jrpc_bufevent));
+	struct jrpc_bufevent *jb = (struct jrpc_bufevent *)malloc(sizeof(struct jrpc_bufevent));
 	if (jb == NULL) {
 		free(jt);
 		return NULL;
@@ -102,8 +103,7 @@ struct json_rpc_tt *json_rpc_tt_tcp_new(struct json_rpc *jr, struct bufevent *bu
 
 	jt->impl = jb;
 	jt->free = tt_bufevent_free;
-	jt->write_request = tt_bufevent_write;
-	jt->write_response = tt_bufevent_write;
+	jt->write = tt_bufevent_write;
 
 	bufevent_setcb(bufev, bufevent_readcb, NULL, bufevent_errorcb, jt);
 

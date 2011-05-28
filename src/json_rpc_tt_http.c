@@ -28,6 +28,11 @@
 static int get_status_by_code(int code);
 static int get_status_and_reason(struct json_object *obj, int *status, char **reason);
 
+struct jrpc_http {
+	struct evhttp *eh;
+	char *uri;
+};
+
 static void send_http_reply(struct evhttp_request *req, int status, char *reason, char *body)
 {
 	struct evbuffer *res = evbuffer_new();
@@ -37,32 +42,8 @@ static void send_http_reply(struct evhttp_request *req, int status, char *reason
 	evbuffer_free(res);
 }
 
-static struct json_object *get_json(struct evbuffer *buf)
+static int send_reply(struct evhttp_request *req, struct json_object *obj)
 {
-	u_char c = buf->buffer[buf->off];
-	buf->buffer[buf->off] = '\0';
-	struct json_object *obj = json_parser_parse(buf);
-	buf->buffer[buf->off] = c;
-
-	return obj;
-}
-
-static void json_rpc_call(struct json_rpc_tt *jt, struct evhttp_request *req)
-{
-	char *buf = (char *)req->input_buffer->buffer;
-
-	struct json_object *obj = get_json(req->input_buffer);
-
-	if (obj == NULL)
-		send_http_reply(req, HTTP_PARSE_ERROR_STATUS, HTTP_PARSE_ERROR_REASON, JSON_RPC_PARSE_ERROR);
-	else
-		jt->read(jt, obj);
-}
-
-static int http_write_response(struct json_rpc_tt *jt, struct json_object *obj)
-{
-	struct evhttp_request *req = (struct evhttp_request *)jt->impl;
-
 	char *result_reason;
 	int result_status;
 
@@ -73,27 +54,86 @@ static int http_write_response(struct json_rpc_tt *jt, struct json_object *obj)
 		send_http_reply(req, result_status, result_reason, obj_str);
 		free(obj_str);
 	}
+
+	return 0;
 }
 
-static int http_write_request(struct json_rpc_tt *jt, struct json_object *obj){}
+static struct json_object *get_json(struct evbuffer *buf)
+{
+	u_char c = buf->buffer[buf->off];
+	buf->buffer[buf->off] = '\0';
+	struct json_object *obj = json_parser_parse((char *)buf->buffer);
+	buf->buffer[buf->off] = c;
+
+	return obj;
+}
+
+static void jrpc_result(struct json_rpc *jr, struct json_object *res, void *arg)
+{
+	struct evhttp_request *req = (struct evhttp_request *)arg;
+
+	if (res == NULL)
+		send_http_reply(req, HTTP_INTERNAL_ERROR_STATUS, HTTP_INTERNAL_ERROR_REASON, JSON_RPC_INTERNAL_ERROR);
+	else
+		send_reply(req, res);
+
+	json_ref_put(res);
+}
+
+static void json_rpc_call(struct evhttp_request *req, void *arg)
+{
+	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
+	struct jrpc_http *jh = (struct jrpc_http *)jt->impl;
+
+	struct json_object *obj = get_json(req->input_buffer);
+
+	if (obj == NULL)
+		send_http_reply(req, HTTP_PARSE_ERROR_STATUS, HTTP_PARSE_ERROR_REASON, JSON_RPC_PARSE_ERROR);
+	else
+		json_rpc_process_request(jt->jr, obj, jrpc_result, (void *)req);
+}
+
+static int tt_http_write(struct json_rpc_tt *jt, struct json_object *obj)
+{
+	return 0;
+}
 
 static void http_free(struct json_rpc_tt *jt)
 {
+	struct jrpc_http *jh = (struct jrpc_http *)jt->impl;
+
+	evhttp_del_cb(jh->eh, jh->uri);
+	free(jh->uri);
+	free(jh);
 	free(jt);
 }
 
-struct json_rpc_tt *json_rpc_tt_http_new(struct json_rpc *jr, struct evhttp_request *req)
+struct json_rpc_tt *json_rpc_tt_http_new(struct json_rpc *jr, struct evhttp *eh, char *uri)
 {
 	struct json_rpc_tt *jt = json_rpc_tt_new(jr);
 	if (jt == NULL)
 		return NULL;
 
-	jt->impl = req;
-	jt->write_reponse = http_write_response;
-	jt->write_request = http_write_request;
+	struct jrpc_http *jh = (struct jrpc_http *)malloc(sizeof(struct jrpc_http));
+	if (jh == NULL) {
+		free(jt);
+		return NULL;
+	}
+
+	jh->uri = strdup(uri);
+	if (jh->uri == NULL) {
+		free(jt);
+		free(jh);
+		return NULL;
+	}
+
+	jh->eh = eh;
+
+	jt->impl = jh;
+	jt->write = tt_http_write;
 	jt->free = http_free;
 
-	json_rpc_call(jt, req);
+	evhttp_set_cb(eh, uri, json_rpc_call, jt);
 
 	return jt;
 }

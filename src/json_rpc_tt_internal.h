@@ -8,6 +8,8 @@
 #ifndef JSON_RPC_TT_INTERNAL_H_
 #define JSON_RPC_TT_INTERNAL_H_
 
+#include "json_rpc.h"
+
 struct json_rpc_tt;
 
 typedef int (*tt_write_cb)(struct json_rpc_tt *jt, struct json_object *obj);
@@ -19,8 +21,7 @@ struct json_rpc_tt {
 
 	void *impl;
 
-	tt_write_cb write_request;
-	tt_write_cb write_response;
+	tt_write_cb write;
 	tt_read_cb read;
 	tt_free_cb free;
 };

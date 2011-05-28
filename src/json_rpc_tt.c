@@ -7,6 +7,9 @@
 
 #include "json_rpc_tt_internal.h"
 
+#include "json_rpc.h"
+#include "log.h"
+
 static void json_rpc_tt_result(struct json_rpc *jr, struct json_object *res, void *arg)
 {
 	if (res == NULL) {
@@ -16,7 +19,7 @@ static void json_rpc_tt_result(struct json_rpc *jr, struct json_object *res, voi
 
 	struct json_rpc_tt *jt = arg;
 
-	if (jt->write_response(jt, res) == -1)
+	if (jt->write(jt, res) == -1)
 		log_warn("%s : sending of JSON-RPC response failed", __func__);
 
 	json_ref_put(res);
@@ -40,7 +43,7 @@ int json_rpc_tt_send(struct json_rpc_tt *jt, struct json_object *req, json_rpc_r
 	if (json_rpc_preprocess_request(jt->jr, req, res_cb, arg) == -1)
 		return -1;
 
-	return jt->write_request(jt, req);
+	return jt->write(jt, req);
 }
 
 struct json_rpc_tt *json_rpc_tt_new(struct json_rpc *jr)

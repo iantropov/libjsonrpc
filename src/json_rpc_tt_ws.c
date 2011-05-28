@@ -6,6 +6,8 @@
  */
 
 #include "json_rpc_tt_internal.h"
+#include "json_parser.h"
+#include "log.h"
 
 struct jrpc_ws {
 	struct ws_connection *conn;
@@ -13,6 +15,15 @@ struct jrpc_ws {
 	ws_error_cb e_cb;
 	void *arg;
 };
+
+static void ws_errorcb(struct ws_connection *conn, short what, void *arg)
+{
+	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
+	struct jrpc_ws *jw = (struct jrpc_ws *)jt->impl;
+
+	if (jw->e_cb != NULL)
+		jw->e_cb(jw->conn, what, jw->arg);
+}
 
 static void ws_messagecb(struct ws_connection *conn, u_char *mess, void *arg)
 {
@@ -45,7 +56,6 @@ static int tt_ws_write(struct json_rpc_tt *jt, struct json_object *obj)
 
 static void tt_ws_free(struct json_rpc_tt *jt)
 {
-	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
 	struct jrpc_ws *jw = (struct jrpc_ws *)jt->impl;
 
 	ws_connection_send_close(jw->conn);
@@ -72,11 +82,10 @@ struct json_rpc_tt *json_rpc_tt_ws_new(struct json_rpc *jr, struct ws_connection
 	jw->arg = arg;
 
 	jt->impl = jw;
-	jt->write_request = tt_ws_write;
-	jt->write_response = tt_ws_write;
+	jt->write = tt_ws_write;
 	jt->free = tt_ws_free;
 
-	ws_set_cbs(conn, NULL, ws_messagecb, ws_errorcb, wj);
+	ws_connection_set_cbs(conn, NULL, ws_messagecb, ws_errorcb, jt);
 
 	return jt;
 }
