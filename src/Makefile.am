@@ -15,4 +15,4 @@ libjsonrpc_la_SOURCES = json.c json.h \
 			json_rpc_tt_http.c
 
 library_includedir=$(includedir)/json_rpc
-library_include_HEADERS = json.h json_parser.h json_rpc.h
+library_include_HEADERS = json.h json_parser.h json_rpc.h json_rpc_tt.h
