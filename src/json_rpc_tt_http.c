@@ -106,7 +106,6 @@ static void http_free(struct json_rpc_tt *jt)
 	evhttp_del_cb(jh->eh, jh->uri);
 	free(jh->uri);
 	free(jh);
-	free(jt);
 }
 
 struct json_rpc_tt *json_rpc_tt_http_new(struct json_rpc *jr, struct evhttp *eh, char *uri)

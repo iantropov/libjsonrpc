@@ -74,7 +74,6 @@ static void tt_bufevent_free(struct json_rpc_tt *jt)
 	bufevent_free(jb->bufev);
 
 	free(jb);
-	free(jt);
 }
 
 struct json_rpc_tt *json_rpc_tt_tcp_new(struct json_rpc *jr, struct bufevent *bufev, everrcb ecb, void *arg)

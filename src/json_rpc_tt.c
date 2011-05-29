@@ -36,6 +36,8 @@ static void json_rpc_tt_read(struct json_rpc_tt *jt, struct json_object *obj)
 void json_rpc_tt_free(struct json_rpc_tt *jt)
 {
 	jt->free(jt);
+
+	free(jt);
 }
 
 int json_rpc_tt_send(struct json_rpc_tt *jt, struct json_object *req, json_rpc_result res_cb, void *arg)

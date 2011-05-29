@@ -62,7 +62,6 @@ static void tt_ws_free(struct json_rpc_tt *jt)
 	ws_connection_free(jw->conn);
 
 	free(jw);
-	free(jt);
 }
 
 struct json_rpc_tt *json_rpc_tt_ws_new(struct json_rpc *jr, struct ws_connection *conn, ws_error_cb e_cb, void *arg)
