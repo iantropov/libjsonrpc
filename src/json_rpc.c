@@ -302,8 +302,6 @@ static int process_batched_call(struct json_rpc *jr, struct json_object *batch, 
 		destroy_request(req);
 	}
 
-	json_ref_put(batch);
-
 	return 0;
 }
 
@@ -316,20 +314,20 @@ static int process_single_call(struct json_rpc *jr, struct json_object *obj, jso
 	if (dispatch_call(req, obj) == notification_call)
 		destroy_request(req);
 
-	json_ref_put(obj);
-
 	return 0;
 }
 
 void json_rpc_process_request(struct json_rpc *jr, struct json_object *obj, json_rpc_result user_cb, void *cb_arg)
 {
-	int ret;
+	int ret = 0;
 	if (json_type(obj) == json_type_object)
 		ret = process_single_call(jr, obj, user_cb, cb_arg);
 	else if (json_type(obj) == json_type_array && json_array_length(obj) > 0)
 		ret = process_batched_call(jr, obj, user_cb, cb_arg);
 	else
 		process_error_final(jr, user_cb, cb_arg, ERROR_INVALID_REQUEST, ERROR_INVALID_REQUEST_CODE);
+
+	json_ref_put(obj);
 
 	if (ret == -1)
 		process_error_final(jr, user_cb, cb_arg, ERROR_INTERNAL, ERROR_INTERNAL_CODE);

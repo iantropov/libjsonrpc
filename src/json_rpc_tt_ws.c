@@ -85,7 +85,7 @@ struct json_rpc_tt *json_rpc_tt_ws_new(struct json_rpc *jr, struct ws_connection
 	jt->write = tt_ws_write;
 	jt->free = tt_ws_free;
 
-	ws_connection_set_cbs(conn, NULL, ws_messagecb, ws_errorcb, jt);
+	ws_connection_set_cbs(conn, ws_messagecb, ws_errorcb, jt);
 
 	return jt;
 }

@@ -3,6 +3,7 @@
 #include <event.h>
 
 #include "../../src/json_parser.h"
+#include "../../src/json_rpc_tt.h"
 #include "json_rpc_check_util.h"
 
 #include <sys/socket.h>
@@ -29,6 +30,7 @@
 
 #define HTTP_PORT 7777
 
+struct json_rpc_tt *__tt;
 struct json_rpc *jr;
 struct json_object *origin, *call;
 struct evhttp *eh;
@@ -43,7 +45,7 @@ static void test_1(struct json_rpc_request *jr, struct json_object *p, void *arg
 	fail_unless(json_type(json_array_get(p, 0)) == json_type_int, "get");
 	fail_unless(json_int_get(json_array_get(p, 0)) == 2, "get");
 
-	json_rpc_return(jr, json_ref_get(p));
+	json_rpc_return(jr, p);
 }
 
 static void test_2(struct json_rpc_request *jr, struct json_object *p, void *arg)
@@ -54,8 +56,23 @@ static void test_2(struct json_rpc_request *jr, struct json_object *p, void *arg
 
 	fail_unless(json_int_get(json_object_get(p, "c")) == 2, "get");
 
-	json_rpc_return(jr, json_ref_get(p));
+	json_rpc_return(jr, p);
 }
+
+static void test_1n(struct json_rpc_request *jr, struct json_object *p, void *arg)
+{
+	test_1(jr, p, arg);
+
+	json_ref_put(p);
+}
+
+static void test_2n(struct json_rpc_request *jr, struct json_object *p, void *arg)
+{
+	test_2(jr, p, arg);
+
+	json_ref_put(p);
+}
+
 
 static int connect_to_port(int port)
 {
@@ -105,14 +122,18 @@ static void prepare_server_side()
 
 	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
 	fail_unless(json_rpc_add_method(jr, "test_2", test_2, NULL) == 0, "add");
+	fail_unless(json_rpc_add_method(jr, "test_1n", test_1, NULL) == 0, "add");
+	fail_unless(json_rpc_add_method(jr, "test_2n", test_2, NULL) == 0, "add");
 
-	evhttp_set_json_rpc(eh, "/json_rpc", jr);
+
+	__tt = json_rpc_tt_http_new(jr, eh, "/json_rpc");
 }
 
 static void clean_server_side()
 {
-	evhttp_free(eh);
+//	evhttp_free(eh);
 	json_rpc_free(jr);
+//	json_rpc_tt_free(__tt);
 }
 
 static void post_request(int sock, struct json_object *call)
@@ -252,7 +273,7 @@ END_TEST
 
 START_TEST (test_notification_1)
 {
-	call = create_single_request(json_string_new("test_1"), json_parser_parse("[2]"), json_null_new());
+	call = create_single_request(json_string_new("test_1n"), json_parser_parse("[2]"), json_null_new());
 
 	origin = NULL;
 
@@ -280,10 +301,9 @@ END_TEST
 
 START_TEST (test_batched_notification_1)
 {
-	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
-	fail_unless(json_rpc_add_method(jr, "test_2", test_2, NULL) == 0, "add");
+	fail_unless(json_rpc_add_method(jr, "test_2n", test_2n, NULL) == 0, "add");
 
-	call = create_batched_request(	json_parser_parse("[\"test_1\", \"test_2\", \"test_2\"]"),
+	call = create_batched_request(	json_parser_parse("[\"test_1\", \"test_2n\", \"test_2\"]"),
 									json_parser_parse("[[2], {\"c\":2, \"d\":null}, {\"c\":2, \"d\":null}]"),
 									json_parser_parse("[1, null, \"cdcd\"]"));
 
@@ -298,10 +318,10 @@ END_TEST
 
 START_TEST (test_batched_notification_2)
 {
-	fail_unless(json_rpc_add_method(jr, "test_1", test_1, NULL) == 0, "add");
-	fail_unless(json_rpc_add_method(jr, "test_2", test_2, NULL) == 0, "add");
+	fail_unless(json_rpc_add_method(jr, "test_1n", test_1n, NULL) == 0, "add");
+	fail_unless(json_rpc_add_method(jr, "test_2n", test_2n, NULL) == 0, "add");
 
-	call = create_batched_request(	json_parser_parse("[\"test_1\", \"test_2\", \"test_2\"]"),
+	call = create_batched_request(	json_parser_parse("[\"test_1n\", \"test_2n\", \"test_2n\"]"),
 									json_parser_parse("[[2], {\"c\":2, \"d\":null}, {\"c\":2, \"d\":null}]"),
 									json_parser_parse("[null, null, null]"));
 

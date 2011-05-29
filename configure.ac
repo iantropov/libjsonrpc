@@ -29,7 +29,7 @@ AC_CHECK_HEADERS([stdlib.h event.h])
 AC_CHECK_LIB(event, event_init)
 AC_CHECK_LIB(event0, bufevent_new)
 #AC_CHECK_LIB(ssl, SSL_library_init)
-AC_CHECK_LIB(ws, ws_new)
+AC_CHECK_LIB(ws, ws_connection_new)
 
 # Checks for library functions.
 AC_FUNC_MALLOC

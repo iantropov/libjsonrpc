@@ -7,6 +7,7 @@
 #include <event.h>
 
 #include "../../src/json_rpc.h"
+#include "../../src/json_rpc_tt.h"
 #include "../../src/json_parser.h"
 
 #include <sys/socket.h>
@@ -39,8 +40,8 @@ static struct json_object *__output_obj;
 
 static struct json_rpc_request *__jrpc_req;
 
-static struct bufevent_jrpc *__client_bjrpc;
-static struct bufevent_jrpc *__server_bjrpc;
+static struct json_rpc_tt *__client_tt;
+static struct json_rpc_tt *__server_tt;
 
 static void (*__commands[100])();
 static int __command_counter = 0;
@@ -164,8 +165,8 @@ static void server_error_cb(struct bufevent *bufev, short what, void *arg)
 
 static void clean_server_side()
 {
-	if (__server_bjrpc != NULL)
-		bufevent_json_rpc_free(__server_bjrpc);
+	if (__server_tt != NULL)
+		json_rpc_tt_free(__server_tt);
 	json_rpc_free(__server_jr);
 }
 
@@ -175,7 +176,7 @@ static void prepare_server_side()
 	fail_unless(server_sock > 0, "accept_connection");
 	__server_bufev = bufevent_new(server_sock, NULL, NULL, NULL, NULL);
 	__server_jr = json_rpc_new();
-	__server_bjrpc = bufevent_json_rpc_new(__server_bufev, __server_jr, server_error_cb, NULL);
+	__server_tt = json_rpc_tt_tcp_new(__server_jr, __server_bufev, server_error_cb, NULL);
 	bufevent_enable(__server_bufev, EV_READ);
 }
 
@@ -185,13 +186,13 @@ static void prepare_client_side()
 	fail_unless(client_sock > 0, "connect_to_port");
 	__client_bufev = bufevent_new(client_sock, NULL, NULL, NULL, NULL);
 	__client_jr = json_rpc_new();
-	__client_bjrpc = bufevent_json_rpc_new(__client_bufev, __client_jr, client_error_cb, NULL);
+	__client_tt = json_rpc_tt_tcp_new(__client_jr, __client_bufev, client_error_cb, NULL);
 	bufevent_enable(__client_bufev, EV_READ);
 }
 
 static void clean_client_side()
 {
-	bufevent_json_rpc_free(__client_bjrpc);
+	json_rpc_tt_free(__client_tt);
 	json_rpc_free(__client_jr);
 }
 
@@ -225,24 +226,24 @@ static void loop_exit()
 	event_loopbreak();
 }
 
-static void send_json(struct bufevent_jrpc *bj, char *str)
+static void send_json(struct json_rpc_tt *bj, char *str)
 {
 	struct json_object *obj = json_parser_parse(str);
 	fail_unless(obj != NULL, "json_parser_parse");
 
-	bufevent_json_rpc_send(bj, obj, result_cb, NULL);
+	json_rpc_tt_send(bj, obj, result_cb, NULL);
 
 	json_ref_put(obj);
 }
 
 static void send_correct_request_server()
 {
-	send_json(__server_bjrpc, CORRECT_REQUEST);
+	send_json(__server_tt, CORRECT_REQUEST);
 }
 
 static void send_correct_request_client()
 {
-	send_json(__client_bjrpc, CORRECT_REQUEST);
+	send_json(__client_tt, CORRECT_REQUEST);
 }
 
 static void send_incorrect_request(struct bufevent *bufev)
@@ -252,12 +253,12 @@ static void send_incorrect_request(struct bufevent *bufev)
 
 static void send_incorrect_request_server()
 {
-	send_json(__server_bjrpc, INCORRECT_REQUEST);
+	send_json(__server_tt, INCORRECT_REQUEST);
 }
 
 static void send_incorrect_request_client()
 {
-	send_json(__client_bjrpc, INCORRECT_REQUEST);
+	send_json(__client_tt, INCORRECT_REQUEST);
 }
 
 static void test_correct_request()
@@ -319,8 +320,8 @@ static void add_jrpc_method_client()
 
 static void close_socket_server()
 {
-	bufevent_json_rpc_free(__server_bjrpc);
-	__server_bjrpc = NULL;
+	json_rpc_tt_free(__server_tt);
+	__server_tt = NULL;
 }
 
 static void test_bufevent_error()

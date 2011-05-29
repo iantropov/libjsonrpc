@@ -8,6 +8,7 @@
 
 #include "../../src/json_rpc.h"
 #include "../../src/json_parser.h"
+#include "../../src/json_rpc_tt.h"
 
 #include "json_rpc_check_util.h"
 
@@ -35,8 +36,9 @@ static int __waiting_command_counter;
 static u_char *__message;
 static short __what;
 static struct ws_connection *__ws_conn;
+static struct ws_accepter *__ws_accepter;
 
-static struct ws_jrpc *__server_wj;
+static struct json_rpc_tt *__server_tt;
 
 struct json_rpc_request *__jrpc_req;
 struct json_object *__input_obj;
@@ -123,26 +125,32 @@ static void result_cb(struct json_rpc *jr, struct json_object *obj, void *arg)
 	__command_counter = process_commands(__commands, __command_counter);
 }
 
+static void ws_acceptcb(struct ws_accepter *wa, struct bufevent *bufev, void *arg)
+{
+	check_arg(arg);
+
+	__ws_conn = ws_connection_new(bufev, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
+	fail_unless(__ws_conn != NULL, "ws_new failed");
+
+	__server_tt = json_rpc_tt_ws_new(__server_jr, __ws_conn, ws_errorcb, (void *)CB_ARG_VALUE);
+	fail_unless(__server_tt != NULL, "ws_json_rpc_failed");
+}
+
 static void prepare_server_side()
 {
 	__eh = evhttp_start(HTTP_HOST, HTTP_PORT);
 
-	__ws_conn = ws_new(NULL, NULL, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__ws_conn != NULL, "ws_new failed");
-
 	__server_jr = json_rpc_new();
 	fail_unless(__server_jr != NULL, "json_rpc_new failed");
 
-	evhttp_set_ws(__eh, WS_URI, __ws_conn);
-
-	__server_wj = ws_json_rpc_new(__ws_conn, __server_jr, ws_errorcb, (void *)CB_ARG_VALUE);
-	fail_unless(__server_wj != NULL, "ws_json_rpc_failed");
+	__ws_accepter = ws_accepter_new(__eh, WS_URI, ws_acceptcb, (void *)CB_ARG_VALUE);
 }
 
 static void clean_server_side()
 {
 	evhttp_free(__eh);
-	ws_json_rpc_free(__server_wj);
+	ws_accepter_free(__ws_accepter);
+	json_rpc_tt_free(__server_tt);
 	json_rpc_free(__server_jr);
 }
 
@@ -195,7 +203,7 @@ static void send_handshake_client()
 
 static void send_closing_frame_server()
 {
-	ws_send_close(__ws_conn);
+	ws_connection_send_close(__ws_conn);
 }
 
 static void send_closing_frame_client()
@@ -203,24 +211,24 @@ static void send_closing_frame_client()
 	util_send_ws_closing_frame(__client_bufev);
 }
 
-static void send_request(struct ws_jrpc *wj, char *str)
+static void send_request(struct json_rpc_tt *wj, char *str)
 {
 	struct json_object *obj = json_parser_parse(str);
 	fail_unless(obj != NULL, "json_parser_parse");
 
-	ws_json_rpc_send(wj, obj, result_cb, (void *)CB_ARG_VALUE);
+	json_rpc_tt_send(wj, obj, result_cb, (void *)CB_ARG_VALUE);
 
 	json_ref_put(obj);
 }
 
 static void send_correct_request_server()
 {
-	send_request(__server_wj, CORRECT_REQUEST);
+	send_request(__server_tt, CORRECT_REQUEST);
 }
 
 static void send_incorrect_request_server()
 {
-	send_request(__server_wj, INCORRECT_REQUEST);
+	send_request(__server_tt, INCORRECT_REQUEST);
 }
 
 static void send_correct_request_client()

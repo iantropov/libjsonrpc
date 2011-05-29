@@ -44,7 +44,7 @@ static void send_http_reply(struct evhttp_request *req, int status, char *reason
 
 static int send_reply(struct evhttp_request *req, struct json_object *obj)
 {
-	char *result_reason;
+	char *result_reason = NULL;
 	int result_status;
 
 	if (get_status_and_reason(obj, &result_status, &result_reason) == -1)
@@ -54,6 +54,8 @@ static int send_reply(struct evhttp_request *req, struct json_object *obj)
 		send_http_reply(req, result_status, result_reason, obj_str);
 		free(obj_str);
 	}
+
+	free(result_reason);
 
 	return 0;
 }
@@ -83,7 +85,6 @@ static void jrpc_result(struct json_rpc *jr, struct json_object *res, void *arg)
 static void json_rpc_call(struct evhttp_request *req, void *arg)
 {
 	struct json_rpc_tt *jt = (struct json_rpc_tt *)arg;
-	struct jrpc_http *jh = (struct jrpc_http *)jt->impl;
 
 	struct json_object *obj = get_json(req->input_buffer);
 
@@ -163,14 +164,15 @@ static int get_status_and_reason(struct json_object *obj, int *status, char **re
 	int result_status;
 	if (json_type(obj) == json_type_array || json_object_get(obj, JSON_RPC_ERROR_MEMBER) == NULL) {
 		result_status = HTTP_SUCCESS_STATUS;
-		result_reason = HTTP_SUCCESS_REASON;
+		result_reason = strdup(HTTP_SUCCESS_REASON);
 	} else {
 		int result_code = json_int_get(json_object_get(json_object_get(obj, JSON_RPC_ERROR_MEMBER), JSON_RPC_ERROR_CODE_MEMBER));
-		result_reason = string_copy(json_string_get(json_object_get(json_object_get(obj, JSON_RPC_ERROR_MEMBER), JSON_RPC_ERROR_MESSAGE_MEMBER)));
+		result_reason = strdup(json_string_get(json_object_get(json_object_get(obj, JSON_RPC_ERROR_MEMBER), JSON_RPC_ERROR_MESSAGE_MEMBER)));
 		result_status = get_status_by_code(result_code);
-		if (result_reason == NULL || result_status == -1)
-			return -1;
 	}
+
+	if (result_reason == NULL || result_status == -1)
+		return -1;
 
 	*reason = result_reason;
 	*status = result_status;
