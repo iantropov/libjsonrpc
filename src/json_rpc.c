@@ -365,7 +365,7 @@ int json_rpc_preprocess_request(struct json_rpc *jr, struct json_object *req, js
 		if (!json_equals(res_entry->id, id)) {
 			res_entry->result_cb = result;
 			res_entry->result_arg = arg;
-			log_info("%s : another request with same id", __func__);
+			json_ref_put(id);
 			return 0;
 		}
 	}
@@ -374,6 +374,7 @@ int json_rpc_preprocess_request(struct json_rpc *jr, struct json_object *req, js
 			malloc(sizeof(struct json_rpc_result_entry));
 	if (entry == NULL) {
 		log_info("%s : malloc_failed", __func__);
+		json_ref_put(id);
 		return -1;
 	}
 
