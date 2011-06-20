@@ -358,6 +358,18 @@ int json_rpc_preprocess_request(struct json_rpc *jr, struct json_object *req, js
 		return -1;
 	}
 
+	struct list_head *p, *n;
+	struct json_rpc_result_entry *res_entry;
+	list_for_each_safe(p, n, &jr->result_cbs) {
+		res_entry = list_entry(p, struct json_rpc_result_entry, list);
+		if (!json_equals(res_entry->id, id)) {
+			res_entry->result_cb = result;
+			res_entry->result_arg = arg;
+			log_info("%s : another request with same id", __func__);
+			return 0;
+		}
+	}
+
 	struct json_rpc_result_entry *entry = (struct json_rpc_result_entry *)
 			malloc(sizeof(struct json_rpc_result_entry));
 	if (entry == NULL) {
