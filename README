@@ -1,0 +1,11 @@
+BUILDING AND INSTALLATION 
+
+$ autoreconf --install -I ./
+$ ./configure
+$ make
+$ make check # (optional, run tests)
+$ sudo make install
+
+DOCUMENTATION
+
+A library documentation available on : https://github.com/iantropov/libjsonrpc
